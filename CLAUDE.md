@@ -12,7 +12,7 @@ Full vision: `BRIEF.md`. Architecture rules: `CONSTITUTION.md`.
 - **TUI**: pi-tui
 - **Agent runtime**: pi-coding-agent
 - **DB (v0)**: better-sqlite3 + sqlite-vec (one SQLite DB per tenant)
-- **Embeddings**: nomic-embed-text (local, private, no API dependency)
+- **Embeddings**: fastembed BGESmallENV15 (local, private, no API dependency)
 - **FTS**: SQLite FTS5
 - **Build**: tsup, bun compile
 - **Test**: vitest
@@ -58,7 +58,7 @@ bun run dev          # watch mode
 ### Data
 - Markdown is source of truth, DB is derived index
 - Wiki-links are first-class graph edges, not text patterns to grep
-- Embeddings are local (nomic-embed-text), per-tenant, never shared across forests
+- Embeddings are local (fastembed BGESmallENV15), per-tenant, never shared across forests
 
 ### Search
 - All search is hybrid: FTS5 + sqlite-vec + graph traversal

@@ -253,7 +253,7 @@ memforest import obsidian ~/my-vault
 | SQLite per-tenant in v0 | Physical isolation, zero shared state, trivially portable (copy a folder = clone a forest) |
 | Postgres schema-per-tenant in v1 | Logical isolation with shared infra, connection pooling, concurrent multi-agent writes |
 | Euclid as active organism brain | The gap isn't search — it's synthesis, maintenance, and autonomous growth |
-| Local embeddings (nomic-embed-text) | Fast, private, no API dependency, runs offline. Quality sufficient for vault-scale corpora |
+| Local embeddings (fastembed/BGESmallENV15) | Fast, private, no API dependency, ~45MB model, 384d vectors keep indexes compact |
 | Markdown stays as storage | Portable, inspectable, git-friendly, no lock-in |
 | CLI-first, TUI-second | Agents consume CLI; humans get TUI as sugar on top |
 | SKILL.md as distribution | Proven portable format across Pi/Claude/Codex/OpenCode |
@@ -370,7 +370,7 @@ The constitution defines:
 - **Agent runtime**: pi-coding-agent
 - **Database v0**: better-sqlite3 + sqlite-vec (one DB per tenant)
 - **Database v1**: PostgreSQL + pgvector (one schema per tenant)
-- **Embeddings**: nomic-embed-text (local, fast, private)
+- **Embeddings**: fastembed / BGESmallENV15 (local, fast, private, 384d)
 - **FTS**: SQLite FTS5 (v0) / PostgreSQL tsvector (v1)
 - **Build**: tsup, single binary via bun compile
 - **Distribution**: npm package + compiled binary + SKILL.md generator
