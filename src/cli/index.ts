@@ -7,7 +7,6 @@ import { registerList } from "./commands/list.js";
 import { registerMaintain } from "./commands/maintain.js";
 import { registerReindex } from "./commands/reindex.js";
 import { registerSearch } from "./commands/search.js";
-import { registerTui } from "./commands/tui.js";
 import { registerUpsert } from "./commands/upsert.js";
 import { registerUse } from "./commands/use.js";
 
@@ -27,7 +26,10 @@ export function createProgram(): Command {
 	registerReindex(program);
 	registerChat(program);
 	registerMaintain(program);
-	registerTui(program);
+
+	program.action(() => {
+		program.commands.find((c) => c.name() === "chat")?.parse(process.argv);
+	});
 
 	return program;
 }
