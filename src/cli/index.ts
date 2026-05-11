@@ -27,8 +27,11 @@ export function createProgram(): Command {
 	registerChat(program);
 	registerMaintain(program);
 
-	program.action(() => {
-		program.commands.find((c) => c.name() === "chat")?.parse(process.argv);
+	program.action(async () => {
+		const chatCmd = program.commands.find((c) => c.name() === "chat");
+		if (chatCmd) {
+			await chatCmd.parseAsync([], { from: "user" });
+		}
 	});
 
 	return program;
