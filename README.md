@@ -2,7 +2,7 @@
 
 **A multi-tenant, agent-native memory substrate.**
 
-> **Status: Pre-alpha.** Memforest is in active design. The code does not exist yet. This README describes what we are building, not what you can download today. Star and watch if you want to follow along.
+> **Status: Pre-alpha (v0).** Core CLI and TUI work. FTS + graph search operational. Vector search, Obsidian import, and Euclid agent runtime are planned for future phases.
 
 ---
 
@@ -48,21 +48,34 @@ Markdown files are the storage format — portable, inspectable, git-friendly. S
 
 ## Quick Start
 
-> **Coming soon.** The installation commands below are placeholders for the planned distribution.
-
 ```bash
-# Install globally
-npm install -g memforest
+# Clone and build from source
+git clone https://github.com/nicolasleao/memforest.git
+cd memforest
+bun install
+bun run build
+
+# Optional: link globally so `memforest` works anywhere
+bun link
 
 # Create your first forest
 memforest init personal
+memforest use personal
 
-# Import an existing Obsidian vault
-memforest import obsidian ~/my-vault
+# Add some knowledge
+memforest upsert "ideas/auth" "Authentication patterns for [[sessions]] and [[oauth]]"
+memforest upsert "ideas/sessions" "Session management with Redis"
 
-# Ask a question
-memforest ask "what do we know about auth patterns"
+# Search and ask
+memforest search "auth"
+memforest ask "how does authentication work"
+memforest health
+
+# Launch the interactive TUI
+memforest tui
 ```
+
+**Requirements:** [Bun](https://bun.sh) >= 1.0
 
 ## CLI Reference
 
@@ -178,4 +191,4 @@ MIT
 
 ---
 
-*Memforest is pre-alpha software under active design. Everything described here is intent, not promise. The architecture and CLI surface may change as implementation reveals better paths.*
+*Memforest is pre-alpha software. The v0 CLI and TUI are functional. Features marked with future phases (vector search, Obsidian import, Euclid agent, SKILL.md generation) are planned but not yet implemented.*
