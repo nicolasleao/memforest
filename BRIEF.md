@@ -304,13 +304,19 @@ Euclid's writable surface area follows a risk hierarchy:
 
 ## Migration Path
 
-1. **Phase 0 — Foundation**: CLI scaffold, Forest layer (multi-tenant file structure), Mycelium layer (SQLite per-tenant, FTS5, sqlite-vec, graph tables). Basic CRUD + hybrid search
-2. **Phase 1 — Import**: Obsidian import pipeline. Scan, map, resolve, embed, index, health check. Universal onboarding from any markdown folder
-3. **Phase 2 — Euclid**: Wire pi-coding-agent as Euclid. Plant-idea and research-breakdown as capabilities. Active maintenance cycles. Autonomous gardening
-4. **Phase 3 — Integration**: SKILL.md generation. Install into Claude Code, OpenCode, Pi. Agent-consumable interface
-5. **Phase 4 — TUI**: Interactive mode via pi-tui. Chat with Euclid. Visual graph exploration. Garden sessions
-6. **Phase 5 — Evolution**: Euclid self-improvement (GEPA-style). Usage-pattern learning. External signal monitoring. Autonomous research
-7. **Phase 6 — Scale**: PostgreSQL backend. Schema-per-tenant. Concurrent multi-agent writes. Migration tooling from v0
+**Phase 0 — Local POC (v0)**: TUI-first local proof of concept. Validates the core product loop.
+  - **A** — Project scaffold + forest lifecycle (multi-tenant file structure, config with `MEMFOREST_HOME`)
+  - **B** — Markdown branches (CRUD, frontmatter, wiki-link extraction)
+  - **C** — SQLite index with FTS5 and edges (no vectors in v0)
+  - **D** — Retrieval-only ask + health CLI (FTS-backed, no LLM synthesis)
+  - **E** — Minimal Euclid TUI (deterministic gardener UI — chat, browse, graph, health panel)
+
+1. **Phase 1 — Vector Search**: Add fastembed + sqlite-vec. Semantic search. Upgrade hybrid search with vector component
+2. **Phase 2 — Import**: Obsidian import pipeline. Scan, map, resolve, embed, index, health check. Universal onboarding from any markdown folder
+3. **Phase 3 — Euclid Agent Runtime**: Wire pi-coding-agent as Euclid. LLM-backed synthesis. Plant-idea and research-breakdown as capabilities. Active maintenance cycles. Autonomous gardening
+4. **Phase 4 — Integration & Distribution**: SKILL.md generation. Install into Claude Code, OpenCode, Pi. Cross-forest search
+5. **Phase 5 — Evolution**: Euclid self-improvement (GEPA-style). Usage-pattern learning. External signal monitoring. Autonomous research
+6. **Phase 6 — Scale**: PostgreSQL backend. Schema-per-tenant. Concurrent multi-agent writes. Migration tooling from v0
 
 ## Open-Source Governance
 

@@ -1,31 +1,36 @@
 # Memforest — Implementation Specification
 
-**Version**: 1.0
+**Version**: 2.0
 **Date**: 2026-05-10
 **Author**: Euclid (Spec Writer)
-**Source documents**: `BRIEF.md`, `CONSTITUTION.md`, `CLAUDE.md`
+**Source documents**: `BRIEF.md`, `CONSTITUTION.md`, `CLAUDE.md`, `ARCHITECTURE.md`
 
-This spec covers Phases 0-4. Each phase is sequential. Each step within a phase is sequential. Every step has a verification gate. Ada should be able to execute each step without asking questions.
+This spec covers Phases 0-4. Phase 0 is the local POC (v0), structured as milestones A-E. Phases 1-4 layer capabilities on top. Each phase is sequential. Every step has a verification gate.
 
 ---
 
-## Phase 0: Foundation
+## Phase 0: Local POC (v0)
 
-**Goal**: Establish the CLI scaffold, Forest layer (multi-tenant file structure), Mycelium layer (SQLite per-tenant with FTS5, sqlite-vec, graph tables), and basic CRUD + hybrid search.
+**Goal**: Validate the core product loop — a user or agent locally manages a markdown knowledge forest through an interactive Euclid TUI, with reliable storage, FTS retrieval, link awareness, and basic health/gardening feedback.
 
 **Prerequisites**: None. This is the first phase.
 
 **Deliverables**:
-- Working CLI binary (`memforest`) with commands: `init`, `list`, `use`, `upsert`, `search`, `ask`, `health`, `reindex`
-- Forest domain: tenant CRUD, markdown CRUD with frontmatter, wiki-link extraction
-- Mycelium domain: SQLite schema (branches, edges, embeddings via sqlite-vec, FTS5), indexing, hybrid search
-- Shared domain: types, config, errors, logger
-- Integration tests covering multi-tenant isolation, search accuracy, wiki-link graph roundtrip
-- All tests green via `bun run test`, all lint green via `bun run lint`, type-check green via `bun run typecheck`
+- **Milestone A**: Project scaffold, shared types/config with `MEMFOREST_HOME`, forest tenant lifecycle
+- **Milestone B**: Markdown branch CRUD with frontmatter and wiki-link extraction
+- **Milestone C**: SQLite index with FTS5, edges table, graph search, and hybrid search (FTS + graph, no vectors)
+- **Milestone D**: CLI command wiring and integration tests
+- **Milestone E**: Minimal Euclid TUI — chat (deterministic), browse, graph, health views
+
+All tests green via `bun run test`, all lint green via `bun run lint`, type-check green via `bun run typecheck`.
 
 ---
 
-### Step 0.1: Project Scaffold
+### Milestone A: Project Scaffold + Forest Lifecycle
+
+---
+
+#### Step A.1: Project Scaffold
 
 **What**: Initialize the project with all configuration files, dependencies, directory structure, and barrel exports.
 
@@ -47,7 +52,7 @@ This spec covers Phases 0-4. Each phase is sequential. Each step within a phase 
     mycelium/
       index.ts            # Public API barrel export
     euclid/
-      index.ts            # Public API barrel export (empty placeholder in Phase 0)
+      index.ts            # Public API barrel export (empty placeholder until Milestone E)
     import/
       index.ts            # Public API barrel export (empty placeholder in Phase 0)
     skill/
@@ -86,10 +91,8 @@ This spec covers Phases 0-4. Each phase is sequential. Each step within a phase 
   "dependencies": {
     "better-sqlite3": "^11.0.0",
     "commander": "^13.0.0",
-    "fastembed": "^2.1.0",
     "gray-matter": "^4.0.3",
-    "smol-toml": "^1.6.0",
-    "sqlite-vec": "^0.1.9"
+    "smol-toml": "^1.6.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
@@ -104,6 +107,8 @@ This spec covers Phases 0-4. Each phase is sequential. Each step within a phase 
   }
 }
 ```
+
+> **Note**: `fastembed` and `sqlite-vec` are deferred to Phase 1 (vector/semantic search). They are not needed for v0.
 
 **tsconfig.json** (strict mode per CONSTITUTION 3.1):
 
@@ -213,7 +218,7 @@ export default defineConfig({
 **Behavior**:
 - Each domain `index.ts` starts as an empty barrel: `export {};` (placeholder domains get this; active domains get their exports as they're built in subsequent steps).
 - `src/index.ts` imports and runs the CLI program from `src/cli/index.ts`.
-- `src/cli/index.ts` creates a Commander `program` with name `memforest`, version from package.json, and description. No commands wired yet (that's Step 0.8).
+- `src/cli/index.ts` creates a Commander `program` with name `memforest`, version from package.json, and description. No commands wired yet (that's Step D.1).
 
 **Tests**: None for this step. The verification is that the project builds and type-checks.
 
@@ -228,7 +233,7 @@ bun run lint         # exits 0
 
 ---
 
-### Step 0.2: Shared Types & Config
+#### Step A.2: Shared Types & Config
 
 **What**: Define all shared types, configuration loading (TOML), error hierarchy, and logger.
 
@@ -244,26 +249,23 @@ bun run lint         # exits 0
 ```typescript
 export interface TenantContext {
   name: string;
-  forestPath: string;       // absolute path: ~/.memforest/forests/<name>/
-  treesPath: string;        // absolute path: ~/.memforest/forests/<name>/trees/
-  databasePath: string;     // absolute path: ~/.memforest/forests/<name>/mycelium.db
-  configPath: string;       // absolute path: ~/.memforest/forests/<name>/forest.toml
+  forestPath: string;       // absolute path: <rootPath>/forests/<name>/
+  treesPath: string;        // absolute path: <rootPath>/forests/<name>/trees/
+  databasePath: string;     // absolute path: <rootPath>/forests/<name>/mycelium.db
+  configPath: string;       // absolute path: <rootPath>/forests/<name>/forest.toml
 }
 
 export interface GlobalConfig {
   activeForest: string | null;
-  rootPath: string;         // default: ~/.memforest/
+  rootPath: string;         // default: ~/.memforest/ (or MEMFOREST_HOME if set)
 }
 
 export interface ForestConfig {
   name: string;
   createdAt: string;        // ISO 8601
   description: string;
-  embedding: {
-    model: string;          // default: "BGESmallENV15"
-    dimensions: number;     // default: 384
-  };
 }
+// Note: `embedding` config (model, dimensions) is deferred to Phase 1 when vectors are added.
 
 export interface BranchFrontmatter {
   title: string;
@@ -287,15 +289,16 @@ export interface Branch {
 export interface SearchResult {
   branch: Branch;
   score: number;
-  mode: "fts" | "semantic" | "graph";
+  mode: "fts" | "graph";
+  // Note: "semantic" mode is deferred to Phase 1 when vectors are added.
 }
 
 export interface HybridSearchResult {
   results: SearchResult[];
   query: string;
   totalFTS: number;
-  totalSemantic: number;
   totalGraph: number;
+  // Note: `totalSemantic` is deferred to Phase 1.
 }
 
 export interface HealthReport {
@@ -313,18 +316,22 @@ export interface HealthReport {
 
 ```typescript
 export function getGlobalConfigPath(): string;
-  // Returns: path.join(os.homedir(), ".memforest", "config.toml")
+  // Returns: path.join(getRootPath(), "config.toml")
+  // Uses MEMFOREST_HOME if set, otherwise defaults to ~/.memforest.
 
 export function getRootPath(): string;
-  // Returns GlobalConfig.rootPath, default: path.join(os.homedir(), ".memforest")
+  // 1. If process.env.MEMFOREST_HOME is set and non-empty, return it.
+  // 2. Otherwise, return path.join(os.homedir(), ".memforest").
+  // This enables test isolation: tests set MEMFOREST_HOME to a temp directory
+  // so they never touch the real ~/.memforest.
 
 export function loadGlobalConfig(): GlobalConfig;
-  // Reads ~/.memforest/config.toml, parses with smol-toml.
-  // If file doesn't exist, returns default config: { activeForest: null, rootPath: "~/.memforest/" }
+  // Reads <rootPath>/config.toml, parses with smol-toml.
+  // If file doesn't exist, returns default config: { activeForest: null, rootPath: getRootPath() }
   // If file is malformed, throws ConfigError.
 
 export function saveGlobalConfig(config: GlobalConfig): void;
-  // Serializes GlobalConfig to TOML, writes to ~/.memforest/config.toml.
+  // Serializes GlobalConfig to TOML, writes to <rootPath>/config.toml.
   // Creates directory if it doesn't exist.
 
 export function loadForestConfig(forestPath: string): ForestConfig;
@@ -392,11 +399,7 @@ export class DatabaseError extends MemforestError {
   }
 }
 
-export class EmbeddingError extends MemforestError {
-  constructor(message: string) {
-    super(message, "EMBEDDING_ERROR");
-  }
-}
+// Note: EmbeddingError is deferred to Phase 1 when vector search is added.
 ```
 
 **Interface** (`src/shared/logger.ts`):
@@ -420,7 +423,8 @@ export function createLogger(domain: string): Logger;
 
 **Behavior**:
 - `smol-toml` is used for TOML parsing/serialization. It is a pure JS TOML parser with no native dependencies, ideal for CLI tools.
-- `loadGlobalConfig()` creates the config file with defaults on first call if it does not exist. It creates `~/.memforest/` directory if missing.
+- `loadGlobalConfig()` creates the config file with defaults on first call if it does not exist. It creates the root directory if missing.
+- `getRootPath()` checks `process.env.MEMFOREST_HOME` first, falls back to `path.join(os.homedir(), ".memforest")`. This enables test isolation — tests use temp dirs via this env var and never touch the real `~/.memforest`.
 - `resolveActiveTenant()` is the single point where tenant resolution happens (CONSTITUTION 2.5). All CLI commands call this once, then pass the resulting `TenantContext` downstream.
 - Wiki-link extraction regex: `/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g` — captures the target from `[[target]]` and `[[target|alias]]` forms.
 - All frontmatter fields except `title`, `created`, `updated`, `tags`, `aliases`, and `status` are preserved as-is in the `[key: string]: unknown` index signature. This satisfies CONSTITUTION 4.2 (unexpected fields preserved but never executed).
@@ -431,6 +435,8 @@ export function createLogger(domain: string): Logger;
 - `loadForestConfig()` throws `ForestNotFoundError` when path doesn't exist
 - `resolveActiveTenant()` throws `NoActiveForestError` when no active forest
 - `resolveActiveTenant()` returns correct `TenantContext` when active forest is set
+- `getRootPath()` returns `MEMFOREST_HOME` when env var is set
+- `getRootPath()` returns `~/.memforest` when env var is not set
 - Use a temp directory for all config tests (not the real `~/.memforest/`)
 
 **Tests** (`tests/unit/shared/errors.test.ts`):
@@ -447,7 +453,7 @@ Expected: all tests pass, no type errors.
 
 ---
 
-### Step 0.3: Forest Domain -- Tenant Management
+#### Step A.3: Forest Domain — Tenant Management
 
 **What**: Implement forest (tenant) lifecycle operations: create, list, use, delete, get path.
 
@@ -468,9 +474,9 @@ export function createForest(name: string, rootPath?: string): TenantContext;
   //    <rootPath>/forests/<name>/
   //    <rootPath>/forests/<name>/trees/
   //    <rootPath>/forests/<name>/forest.toml
-  // 5. Write default ForestConfig to forest.toml (name, createdAt=now, description="", embedding defaults).
+  // 5. Write default ForestConfig to forest.toml (name, createdAt=now, description="").
   // 6. Return constructed TenantContext.
-  // Note: does NOT create mycelium.db — that's the mycelium domain's job (Step 0.5).
+  // Note: does NOT create mycelium.db — that's the mycelium domain's job (Step C.1).
 
 export function listForests(rootPath?: string): TenantContext[];
   // 1. Read <rootPath>/forests/ directory entries.
@@ -525,7 +531,11 @@ Expected: all tests pass.
 
 ---
 
-### Step 0.4: Forest Domain -- Markdown CRUD
+### Milestone B: Markdown Branches
+
+---
+
+#### Step B.1: Markdown CRUD
 
 **What**: Implement markdown file operations with frontmatter parsing and wiki-link extraction.
 
@@ -695,9 +705,13 @@ Expected: all tests pass.
 
 ---
 
-### Step 0.5: Mycelium Domain -- Database Setup
+### Milestone C: SQLite Index with FTS and Edges
 
-**What**: Define the SQLite schema (branches, edges, embeddings via sqlite-vec, FTS5) and implement database initialization and connection management.
+---
+
+#### Step C.1: Database Setup
+
+**What**: Define the SQLite schema (branches, edges, FTS5) and implement database initialization and connection management.
 
 **Where**:
 - `src/mycelium/database.ts` — Database connection management + initialization
@@ -766,17 +780,7 @@ CREATE TRIGGER IF NOT EXISTS branches_au AFTER UPDATE ON branches BEGIN
 END;
 ```
 
-The sqlite-vec virtual table is created programmatically after loading the extension:
-
-```sql
--- Created after sqlite-vec extension is loaded
-CREATE VIRTUAL TABLE IF NOT EXISTS vec_branches USING vec0(
-  branch_id INTEGER PRIMARY KEY,
-  embedding FLOAT[384]
-);
-```
-
-The `384` dimension matches `BGESmallENV15` from fastembed (default model). If the embedding model changes, the dimension must match.
+> **Note**: The `vec_branches` virtual table (sqlite-vec) is deferred to Phase 1. No vector extension loading in v0.
 
 **Interface** (`src/mycelium/database.ts`):
 
@@ -787,16 +791,14 @@ import Database from "better-sqlite3";
 export function openDatabase(tenant: TenantContext): Database.Database;
   // 1. Open better-sqlite3 connection to tenant.databasePath.
   // 2. Enable WAL mode: db.pragma("journal_mode = WAL")
-  // 3. Load sqlite-vec extension: db.loadExtension(sqliteVecPath)
-  //    - sqliteVecPath obtained via: import * as sqliteVec from "sqlite-vec"; sqliteVec.getLoadablePath()
-  // 4. Return the database connection.
+  // 3. Return the database connection.
   // Note: does NOT run schema creation. Use initDatabase for that.
+  // Note: No sqlite-vec extension loading in v0. That is deferred to Phase 1.
 
 export function initDatabase(tenant: TenantContext): Database.Database;
   // 1. Call openDatabase(tenant).
   // 2. Run all CREATE TABLE/TRIGGER statements from schema.ts inside a transaction.
-  // 3. Create the vec_branches virtual table.
-  // 4. Return the initialized database connection.
+  // 3. Return the initialized database connection.
 
 export function closeDatabase(database: Database.Database): void;
   // Closes the database connection.
@@ -806,65 +808,35 @@ export function closeDatabase(database: Database.Database): void;
 **Behavior**:
 - Each tenant has exactly one SQLite file at `<forestPath>/mycelium.db` (CONSTITUTION 4.5).
 - WAL mode enables concurrent reads while a write is in progress — important for future daemon/watch mode.
-- The sqlite-vec extension is loaded via the npm package's `getLoadablePath()` which returns the path to the compiled native extension for the current platform.
 - `openDatabase` NEVER opens a database for a different tenant than the one specified. This is a constitutional invariant (CONSTITUTION 4.5: no `ATTACH DATABASE` across tenants).
 - Connection management is caller-owned: the caller opens, uses, and closes the connection. No connection pool in v0 (single-process CLI).
 
 **Tests** (`tests/unit/mycelium/database.test.ts`):
 - `initDatabase` creates the database file
-- `initDatabase` creates all expected tables (branches, edges, fts_branches, vec_branches)
+- `initDatabase` creates all expected tables (branches, edges, fts_branches)
 - `initDatabase` is idempotent (calling twice doesn't error — `IF NOT EXISTS` guards)
 - `openDatabase` on existing db succeeds without re-running schema
 - FTS5 triggers fire correctly: insert row into branches, verify fts_branches has matching entry
-- sqlite-vec extension loads successfully (vec_branches table is queryable)
-- Use temp directories with createForest from Step 0.3 to set up tenant context
+- Use temp directories with createForest from Step A.3 to set up tenant context
 
 **Verification gate**:
 ```bash
 bun run typecheck
 bun run test -- tests/unit/mycelium/database.test.ts
 ```
-Expected: all tests pass. The sqlite-vec extension loads without error on the host platform.
+Expected: all tests pass.
 
 ---
 
-### Step 0.6: Mycelium Domain -- Indexing
+#### Step C.2: Indexing
 
-**What**: Implement branch indexing (FTS5 + graph edges from wiki-links + embedding generation), removal, and full reindex.
+**What**: Implement branch indexing (FTS5 + graph edges from wiki-links), removal, and full reindex.
 
 **Where**:
 - `src/mycelium/indexer.ts` — Indexing operations
-- `src/mycelium/embedder.ts` — Embedding generation via fastembed
 - `src/mycelium/index.ts` — Updated barrel export
 
-**Interface** (`src/mycelium/embedder.ts`):
-
-```typescript
-import { EmbeddingModel, FlagEmbedding } from "fastembed";
-
-let embeddingInstance: FlagEmbedding | null = null;
-
-export async function getEmbedder(): Promise<FlagEmbedding>;
-  // Lazy singleton. On first call:
-  //   embeddingInstance = await FlagEmbedding.init({ model: EmbeddingModel.BGESmallENV15 });
-  // Returns cached instance on subsequent calls.
-  // BGESmallENV15 produces 384-dimensional vectors. Fast, small model download (~45MB).
-  // Model is downloaded and cached automatically by fastembed on first use
-  //   (cached at <os cache dir>/fastembed_cache/).
-
-export async function generateEmbedding(text: string): Promise<number[]>;
-  // 1. Get embedder instance.
-  // 2. Call embeddingInstance.queryEmbed(text) — returns number[].
-  // 3. Return the embedding vector (384 floats).
-  // Throws EmbeddingError on failure.
-
-export async function generateEmbeddings(texts: string[]): Promise<number[][]>;
-  // 1. Get embedder instance.
-  // 2. Call embeddingInstance.embed(texts) — returns AsyncGenerator<number[][]>.
-  // 3. Collect all batches, flatten to number[][].
-  // 4. Return array of embedding vectors, one per input text.
-  // Throws EmbeddingError on failure.
-```
+> **Note**: `src/mycelium/embedder.ts` (fastembed embedding generation) is deferred to Phase 1. Indexing in v0 handles branches table + edges table only. FTS5 triggers handle the FTS index automatically.
 
 **Interface** (`src/mycelium/indexer.ts`):
 
@@ -883,20 +855,11 @@ export async function indexBranch(
   //    The FTS5 triggers handle fts_branches sync automatically.
   // 2. Delete all existing edges WHERE source_path = branch.relativePath.
   // 3. For each wiki-link in branch.wikiLinks:
-  //    a. Resolve the link target using resolveBranchByLink (from forest domain — import via shared interface).
-  //       Actually: since mycelium must not import forest (CONSTITUTION 2.2), the resolution status
-  //       is passed in. The caller (CLI layer or a cross-domain orchestrator) resolves links before calling.
-  //       REVISED APPROACH: indexBranch receives the branch object which already has wikiLinks extracted.
-  //       Insert edges with target_resolved = 0 (unresolved by default). A separate resolveEdges() call
-  //       updates resolution status.
-  //    b. INSERT INTO edges (source_path, target_path, target_resolved, created_at).
-  //       Use INSERT OR IGNORE to handle duplicate edges gracefully.
-  // 4. Generate embedding for the branch content:
-  //    a. Concatenate title + " " + content as the embedding input.
-  //    b. Call generateEmbedding(text).
-  //    c. Get the branch's id from the branches table.
-  //    d. DELETE FROM vec_branches WHERE branch_id = <id> (remove old embedding).
-  //    e. INSERT INTO vec_branches (branch_id, embedding) VALUES (<id>, <vector>).
+  //    Insert edges with target_resolved = 0 (unresolved by default). A separate resolveEdges() call
+  //    updates resolution status.
+  //    INSERT INTO edges (source_path, target_path, target_resolved, created_at).
+  //    Use INSERT OR IGNORE to handle duplicate edges gracefully.
+  // Note: No embedding generation in v0. That step is deferred to Phase 1.
 
 export async function removeBranchIndex(
   database: Database.Database,
@@ -904,11 +867,11 @@ export async function removeBranchIndex(
 ): Promise<void>;
   // 1. Get branch id from branches table WHERE relative_path = relativePath.
   // 2. If not found, return (idempotent — removing a non-indexed branch is a no-op).
-  // 3. DELETE FROM vec_branches WHERE branch_id = <id>.
-  // 4. DELETE FROM edges WHERE source_path = relativePath.
-  // 5. DELETE FROM edges WHERE target_path = relativePath.
-  // 6. DELETE FROM branches WHERE id = <id>.
+  // 3. DELETE FROM edges WHERE source_path = relativePath.
+  // 4. DELETE FROM edges WHERE target_path = relativePath.
+  // 5. DELETE FROM branches WHERE id = <id>.
   //    FTS5 triggers handle fts_branches cleanup automatically.
+  // Note: No vec_branches DELETE in v0 (no vector table).
 
 export async function resolveEdges(
   database: Database.Database
@@ -924,7 +887,7 @@ export async function reindexForest(
   tenant: TenantContext,
   branches: Branch[]
 ): Promise<{ indexed: number; failed: number }>;
-  // 1. Clear all tables: DELETE FROM vec_branches; DELETE FROM edges; DELETE FROM branches;
+  // 1. Clear all tables: DELETE FROM edges; DELETE FROM branches;
   //    (FTS5 triggers handle fts_branches cleanup.)
   // 2. For each branch in branches:
   //    a. Call indexBranch(database, tenant, branch).
@@ -933,49 +896,43 @@ export async function reindexForest(
   // 4. Return { indexed: successCount, failed: failureCount }.
   // Note: The caller (CLI) is responsible for calling listBranches() from forest domain
   //   and passing the result here. Mycelium never reads the filesystem directly.
+  // Note: No vec_branches clearing in v0.
 ```
 
 **Behavior**:
 - `indexBranch` is the core indexing operation. It handles both insert and update (upsert pattern on relative_path).
 - The `branches` table in SQLite is a denormalized copy of the markdown file's metadata. It exists for search — the markdown file remains the source of truth (CONSTITUTION 2.4).
-- Embedding is generated from `title + " " + content`. This gives the title weight in semantic search without requiring a separate title embedding.
 - `reindexForest` is destructive to the index (not to markdown files). It rebuilds from scratch. The CLI warns before running.
 - Edge resolution is a separate pass because mycelium cannot import forest. The edges are stored with `target_resolved = 0`, then `resolveEdges` checks the branches table (which was populated by indexing) to mark resolved edges.
-- fastembed downloads the model on first use (~45MB). The spec assumes this is acceptable for a CLI tool. The model is cached globally and shared across forests.
 
 **Tests** (`tests/unit/mycelium/indexer.test.ts`):
-- `indexBranch` inserts into branches, fts_branches, edges, and vec_branches
+- `indexBranch` inserts into branches, fts_branches, and edges
 - `indexBranch` called twice on same branch updates (upsert, not duplicate)
 - `indexBranch` with wiki-links creates edges
-- `removeBranchIndex` removes all related data (branches, edges, embeddings, FTS)
+- `removeBranchIndex` removes all related data (branches, edges, FTS)
 - `removeBranchIndex` on non-existent branch is a no-op
 - `resolveEdges` marks edges as resolved when target branch is indexed
 - `resolveEdges` leaves edges unresolved when target doesn't exist
 - `reindexForest` rebuilds from scratch
 
-**Tests** (`tests/unit/mycelium/embedder.test.ts`):
-- `generateEmbedding` returns a 384-length number array
-- `generateEmbedding` returns consistent results for the same input
-- `generateEmbeddings` batch returns correct number of vectors
-- These tests will download the model on first run. Mark them with a `slow` tag if needed.
-
 **Verification gate**:
 ```bash
 bun run typecheck
 bun run test -- tests/unit/mycelium/indexer.test.ts
-bun run test -- tests/unit/mycelium/embedder.test.ts
 ```
-Expected: all tests pass. Embedding model downloads successfully on first run.
+Expected: all tests pass.
 
 ---
 
-### Step 0.7: Mycelium Domain -- Search
+#### Step C.3: Search
 
-**What**: Implement FTS5 search, semantic (vector) search, graph traversal, and hybrid search with result merging and reranking.
+**What**: Implement FTS5 search, graph traversal, and hybrid search (FTS + graph) with result merging and reranking.
 
 **Where**:
 - `src/mycelium/search.ts` — All search functions
 - `src/mycelium/index.ts` — Updated barrel export
+
+> **Note**: `searchSemantic` (vector search via sqlite-vec) is deferred to Phase 1. Hybrid search in v0 combines FTS + graph only.
 
 **Interface** (`src/mycelium/search.ts`):
 
@@ -1003,25 +960,6 @@ export async function searchFTS(
   // 6. Handle FTS5 syntax errors gracefully: if the query contains special chars that
   //    break FTS5 syntax, escape them by wrapping each term in double quotes.
 
-export async function searchSemantic(
-  database: Database.Database,
-  query: string,
-  limit?: number
-): Promise<SearchResult[]>;
-  // 1. Generate embedding for query: queryVector = await generateEmbedding(query).
-  // 2. Query sqlite-vec:
-  //    SELECT branch_id, distance
-  //    FROM vec_branches
-  //    WHERE embedding MATCH ?
-  //    ORDER BY distance
-  //    LIMIT ?
-  //    Pass the query vector as a JSON-serialized float array.
-  // 3. For each result, load the full branch data from branches table.
-  // 4. Default limit: 20.
-  // 5. Map to SearchResult[] with mode = "semantic".
-  // 6. Score = 1 - distance (cosine distance; 0 = identical, 1 = orthogonal).
-  //    Clamp to [0, 1].
-
 export function searchGraph(
   database: Database.Database,
   startPath: string,
@@ -1042,30 +980,29 @@ export async function searchHybrid(
   query: string,
   options?: {
     limit?: number;
-    ftsWeight?: number;      // default: 0.4
-    semanticWeight?: number; // default: 0.5
-    graphWeight?: number;    // default: 0.1
+    ftsWeight?: number;      // default: 0.7
+    graphWeight?: number;    // default: 0.3
   }
 ): Promise<HybridSearchResult>;
-  // 1. Run searchFTS and searchSemantic in parallel (Promise.all).
+  // 1. Run searchFTS(database, query).
   // 2. For graph search: take top FTS result's relative_path as the graph start node.
   //    If no FTS results, skip graph search.
-  // 3. Merge results by relativePath:
-  //    a. For each unique relativePath across all result sets:
-  //       combinedScore = (ftsScore * ftsWeight) + (semanticScore * semanticWeight) + (graphScore * graphWeight)
+  // 3. Run searchGraph(database, topFTSResult.relativePath).
+  // 4. Merge results by relativePath:
+  //    a. For each unique relativePath across both result sets:
+  //       combinedScore = (ftsScore * ftsWeight) + (graphScore * graphWeight)
   //       where missing scores default to 0.
   //    b. Pick the mode that contributed the highest individual score as the result's mode.
-  // 4. Sort by combinedScore descending.
-  // 5. Deduplicate by relativePath.
-  // 6. Apply limit (default 20).
-  // 7. Return HybridSearchResult with counts per mode.
+  // 5. Sort by combinedScore descending.
+  // 6. Deduplicate by relativePath.
+  // 7. Apply limit (default 20).
+  // 8. Return HybridSearchResult with counts per mode.
 ```
 
 **Behavior**:
 - FTS5 search uses SQLite's built-in BM25 ranking. The `rank` column from FTS5 is negative (more negative = better match). Normalization converts to 0-1 where higher is better.
-- Semantic search uses cosine distance from sqlite-vec. The `distance` column is 0 (identical) to 2 (opposite). Score = 1 - (distance / 2) normalizes to 0-1.
 - Graph search is BFS, not DFS, to prioritize closer neighbors. The visited set prevents cycles.
-- Hybrid search weights default to favoring semantic (0.5) over FTS (0.4) over graph (0.1). This can be tuned per query via options.
+- Hybrid search weights default to FTS (0.7) over graph (0.3). Without vector search, FTS is the primary retrieval signal.
 - The graph component of hybrid search uses the top FTS result as the starting node. This grounds the graph traversal in relevance rather than starting from an arbitrary node.
 - Empty queries return empty results. No error thrown — it's a valid "no results" case.
 - FTS5 special characters (`*`, `"`, `OR`, `AND`, `NOT`, `NEAR`) in user queries are handled by quoting each whitespace-separated term in double quotes. This prevents syntax errors from natural language queries.
@@ -1076,15 +1013,13 @@ export async function searchHybrid(
 - `searchFTS("nonexistent gibberish xyz")` returns empty array
 - `searchFTS("")` returns empty array
 - `searchFTS` handles special characters without throwing
-- `searchSemantic("authentication patterns")` returns semantically similar branches
-- `searchSemantic` results are different from FTS results for the same concept expressed differently
 - `searchGraph("domains/auth")` returns linked branches within specified depth
 - `searchGraph` respects depth limit
 - `searchGraph` does not return the start node
 - `searchGraph` handles cycles without infinite loop
 - `searchHybrid("auth")` returns merged, deduplicated, reranked results
 - `searchHybrid` result scores reflect weighted combination
-- `searchHybrid` with `{ ftsWeight: 1, semanticWeight: 0, graphWeight: 0 }` produces same ranking as pure FTS
+- `searchHybrid` with `{ ftsWeight: 1, graphWeight: 0 }` produces same ranking as pure FTS
 
 **Verification gate**:
 ```bash
@@ -1095,7 +1030,11 @@ Expected: all tests pass.
 
 ---
 
-### Step 0.8: CLI -- Command Wiring
+### Milestone D: CLI Commands + Integration Tests
+
+---
+
+#### Step D.1: CLI Command Wiring
 
 **What**: Wire all CLI commands using Commander.js. Each command resolves tenant context first, then dispatches to domain functions.
 
@@ -1205,7 +1144,7 @@ Exit code: 0 on success, 1 on error.
 ```
 Arguments: query (required)
 Options:
-  --mode, -m <mode> — "fts" | "semantic" | "graph" | "hybrid" (default: "hybrid")
+  --mode, -m <mode> — "fts" | "graph" | "hybrid" (default: "hybrid")
   --limit, -l <n> — max results (default: 10)
   --json — output as JSON (agent-consumable)
 Behavior:
@@ -1213,15 +1152,14 @@ Behavior:
   2. openDatabase(tenant)
   3. Dispatch based on mode:
      - "fts": searchFTS(db, query, limit)
-     - "semantic": searchSemantic(db, query, limit)
      - "graph": searchGraph(db, query, limit)  — query is treated as startPath
      - "hybrid": searchHybrid(db, query, { limit })
   4. If --json: print JSON.stringify(results, null, 2)
   5. If not --json: print formatted table:
-     SCORE  MODE      PATH                    TITLE
-     0.92   semantic  domains/auth-patterns   Authentication Patterns
-     0.87   fts       research/jwt-tokens     JWT Token Research
-     0.45   graph     domains/sessions        Session Management
+     SCORE  MODE    PATH                    TITLE
+     0.92   fts     domains/auth-patterns   Authentication Patterns
+     0.87   fts     research/jwt-tokens     JWT Token Research
+     0.45   graph   domains/sessions        Session Management
   6. If no results: "No results found for '<query>'"
   7. Close database.
 Errors:
@@ -1229,13 +1167,15 @@ Errors:
 Exit code: 0.
 ```
 
+> **Note**: "semantic" mode is removed from v0. It returns in Phase 1 when vectors are added.
+
 **`memforest ask "<question>"`** (`src/cli/commands/ask.ts`):
 ```
 Arguments: question (required)
 Options:
   --json — output as JSON
 Behavior:
-  Phase 0 placeholder — Euclid synthesis comes in Phase 2.
+  v0 uses searchHybrid (FTS + graph) to answer questions. No LLM synthesis.
   1. resolveActiveTenant()
   2. searchHybrid(db, question, { limit: 5 })
   3. Print header: "Top results for: <question>"
@@ -1297,7 +1237,7 @@ Exit code: 0 on success, 1 if any branches failed.
 - `--json` flag on applicable commands outputs machine-readable JSON. This is critical for agent consumption.
 - stdout is for data output only. Status messages ("Creating forest...", etc.) go to stderr so they don't pollute piped output.
 
-**Tests**: CLI commands are tested via integration tests in Step 0.9. Unit tests for individual command handler functions are optional but encouraged for complex logic (e.g., upsert's name parsing).
+**Tests**: CLI commands are tested via integration tests in Step D.2. Unit tests for individual command handler functions are optional but encouraged for complex logic (e.g., upsert's name parsing).
 
 **Verification gate**:
 ```bash
@@ -1318,7 +1258,7 @@ Expected: all commands execute without error, output is readable.
 
 ---
 
-### Step 0.9: Integration Tests
+#### Step D.2: Integration Tests
 
 **What**: End-to-end tests covering the full stack: create forest, write branches, index, search, verify results. Multi-tenant isolation. FTS accuracy. Wiki-link graph roundtrip.
 
@@ -1357,8 +1297,7 @@ Test: "upsert + index + search roundtrip"
   2. createBranch with content "Authentication patterns for microservices"
   3. indexBranch
   4. searchFTS(db, "authentication") — returns the branch
-  5. searchSemantic(db, "how to authenticate") — returns the branch
-  6. Verify search results include correct relativePath and non-zero score
+  5. Verify search results include correct relativePath and non-zero score
 ```
 
 **Test: Search Accuracy** (`tests/integration/search.test.ts`):
@@ -1377,13 +1316,9 @@ Test: "FTS returns exact keyword matches"
   searchFTS(db, "Redis") → must include "domains/sessions"
   searchFTS(db, "PKCE") → must include "research/oauth"
 
-Test: "Semantic search finds conceptually related content"
-  searchSemantic(db, "how to log in users") → should include auth-patterns or sessions
-  searchSemantic(db, "third party login") → should include research/oauth
-
-Test: "Hybrid combines FTS and semantic"
+Test: "Hybrid combines FTS and graph"
   searchHybrid(db, "authentication") → must return results from multiple modes
-  Verify at least one result has mode "fts" and at least one has mode "semantic"
+  Verify at least one result has mode "fts"
 ```
 
 **Test: Multi-Tenant Isolation** (`tests/integration/multi-tenant.test.ts`):
@@ -1397,10 +1332,8 @@ Test: "tenants are fully isolated" (CONSTITUTION 2.1, 4.1, 4.4, 4.5)
   5. indexBranch both
   6. searchFTS(dbA, "tenant") → returns only tenant A's branch
   7. searchFTS(dbB, "tenant") → returns only tenant B's branch
-  8. searchSemantic(dbA, "API key") → returns only tenant A's branch
-  9. searchSemantic(dbB, "API key") → returns only tenant B's branch
-  10. searchFTS(dbA, "sk_b_456") → returns ZERO results (tenant B's data is invisible)
-  11. searchFTS(dbB, "sk_a_123") → returns ZERO results
+  8. searchFTS(dbA, "sk_b_456") → returns ZERO results (tenant B's data is invisible)
+  9. searchFTS(dbB, "sk_a_123") → returns ZERO results
 
 Test: "database files are separate"
   1. Verify tenantA.databasePath !== tenantB.databasePath
@@ -1444,11 +1377,800 @@ Expected: zero errors.
 
 ---
 
-## Phase 1: Import
+### Milestone E: Minimal Euclid TUI
+
+---
+
+#### Step E.1: TUI Application Shell
+
+**What**: Set up the TUI application with navigation, panels, and keyboard shortcuts.
+
+**Where**:
+- `src/cli/tui/app.ts` — Main TUI application
+- `src/cli/tui/types.ts` — TUI-specific types
+- `src/cli/tui/index.ts` — Barrel export
+
+**Dependencies**: Add to `package.json`:
+```json
+{
+  "dependencies": {
+    "@anthropic-ai/pi-tui": "TBD"
+  }
+}
+```
+> **Note**: The exact package name and version for pi-tui is TBD. If pi-tui is not published as an npm package, an alternative TUI framework (e.g., `ink`, `blessed`, or `@anthropic-ai/claude-code` internal TUI primitives) should be evaluated. The interface below is framework-agnostic and should be adapted to whatever TUI library is used.
+
+**Interface** (`src/cli/tui/types.ts`):
+
+```typescript
+import type { TenantContext } from "@memforest/shared";
+
+export type TUIView = "chat" | "browse" | "graph" | "health";
+
+export interface TUIState {
+  activeView: TUIView;
+  tenant: TenantContext;
+  chatHistory: Array<{ role: "user" | "euclid"; content: string }>;
+  selectedBranch: string | null;
+  graphRoot: string | null;
+  graphDepth: number;
+}
+```
+
+**Interface** (`src/cli/tui/app.ts`):
+
+```typescript
+import type { TenantContext } from "@memforest/shared";
+
+export async function launchTUI(tenant: TenantContext): Promise<void>;
+  // 1. Initialize TUI application.
+  // 2. Set up panels:
+  //    - Header: "memforest v<version> | Forest: <name> | View: <activeView>"
+  //    - Sidebar: view switcher (chat/browse/graph/health)
+  //    - Main: active view content
+  //    - Footer: keybindings help
+  // 3. Keyboard shortcuts:
+  //    - Ctrl+C / q: quit
+  //    - Tab: cycle views
+  //    - 1-4: jump to specific view (1=chat, 2=browse, 3=graph, 4=health)
+  //    - /: focus search input
+  //    - Enter: send chat message / select item
+  // 4. Start event loop.
+```
+
+**Behavior**:
+- The TUI resolves tenant context once at launch (same as CLI commands).
+- State is managed locally in the TUI process. No persistence beyond the session (chat history is ephemeral).
+- The TUI uses the same public domain APIs as CLI commands — it calls `searchHybrid`, `listBranches`, `searchGraph`, etc. directly. It does not shell out to CLI commands.
+
+**Tests**: TUI tests are primarily manual. Automated tests focus on the state management logic, not rendering.
+
+**Tests** (`tests/unit/tui/state.test.ts`):
+- View switching updates activeView
+- Chat history appends messages correctly
+- Branch selection updates selectedBranch
+- Graph depth adjustment clamps to valid range (1-3)
+
+**Verification gate**:
+```bash
+bun run build
+node dist/index.js init tui-test
+node dist/index.js use tui-test
+node dist/index.js tui  # launches TUI, verify it renders without crashing
+# Ctrl+C to exit
+rm -rf ~/.memforest/forests/tui-test
+```
+
+---
+
+#### Step E.2: Chat View (Deterministic)
+
+**What**: Implement a deterministic chat interface. Users type questions, Euclid responds with search results formatted as natural language. No LLM dependency.
+
+**Where**:
+- `src/cli/tui/views/chat.ts`
+
+**Interface** (`src/cli/tui/views/chat.ts`):
+
+```typescript
+import type { TUIState } from "../types.js";
+import type Database from "better-sqlite3";
+
+export interface ChatView {
+  render(state: TUIState): void;
+    // Renders:
+    //   - Chat history (scrollable, newest at bottom)
+    //   - Input field at bottom
+    //   - "Searching..." indicator while waiting for results
+
+  handleInput(input: string, database: Database.Database, state: TUIState): Promise<TUIState>;
+    // 1. Append { role: "user", content: input } to chatHistory.
+    // 2. Run searchHybrid(database, input, { limit: 5 }).
+    // 3. Format response using template logic (see below).
+    // 4. Append { role: "euclid", content: response } to chatHistory.
+    // 5. Return updated state.
+}
+```
+
+**Behavior**:
+- No EuclidAgent or LLM dependency. Chat runs `searchHybrid` under the hood.
+- User types a question, Euclid "responds" through deterministic template responses:
+  - **Has results**: `"I found {n} related branches. The most relevant is '{title}' (score: {score}, via: {mode}). Here's what it says:\n\n{snippet}\n\nOther related branches:\n- {path2} ({score2})\n- {path3} ({score3})"`
+  - **No results**: `"I don't have anything on that topic yet. Want to plant a note about it? Use: memforest upsert \"tree/branch\" \"your content\""`
+- Chat history is ephemeral (session only). Not persisted to disk.
+- Include search provenance in responses (branch paths, scores, modes).
+- Chat messages are rendered with visual distinction between user and Euclid (different colors/prefixes).
+- The first 300 characters of the top result's content are shown as the snippet.
+
+**Tests** (`tests/unit/tui/chat.test.ts`):
+- Template response includes branch title and score when results exist
+- Template response shows "no results" message when search returns empty
+- Chat history grows with each exchange
+- Provenance (paths, scores) is included in response text
+
+**Verification gate**: Manual testing. Launch TUI, switch to chat view, type a question, verify template response appears with correct search results.
+
+---
+
+#### Step E.3: Browse View
+
+**What**: Implement the forest browser. Navigate trees and branches, view content.
+
+**Where**:
+- `src/cli/tui/views/browse.ts`
+
+**Interface** (`src/cli/tui/views/browse.ts`):
+
+```typescript
+import type { TUIState } from "../types.js";
+
+export interface BrowseView {
+  render(state: TUIState): void;
+    // Renders:
+    //   - Left panel: tree list (expandable to show branches)
+    //   - Right panel: selected branch content (rendered markdown)
+    //   - Status bar: branch metadata (status, tags, created, updated)
+
+  handleNavigation(key: string, state: TUIState): TUIState;
+    // Arrow keys: navigate tree/branch list
+    // Enter: expand tree / select branch
+    // Backspace: collapse / go up
+}
+```
+
+**Behavior**:
+- Trees are listed alphabetically. Expanding a tree shows its branches.
+- Selecting a branch shows its content in the right panel with frontmatter metadata in the status bar.
+- Content panel renders markdown with basic formatting (headers, bold, links highlighted).
+
+**Tests**: Primarily manual testing.
+
+**Tests** (`tests/unit/tui/browse.test.ts`):
+- Navigation state updates correctly (selected tree, selected branch)
+- Expanding a tree loads its branches
+- Branch selection populates content panel state
+
+**Verification gate**: Manual testing. Launch TUI, create some branches first, switch to browse view, navigate trees and branches.
+
+---
+
+#### Step E.4: Graph View (Simplified)
+
+**What**: Implement a simplified textual graph neighborhood display. Show the local link neighborhood of a selected branch.
+
+**Where**:
+- `src/cli/tui/views/graph.ts`
+
+**Interface** (`src/cli/tui/views/graph.ts`):
+
+```typescript
+import type { TUIState } from "../types.js";
+import type Database from "better-sqlite3";
+
+export interface GraphView {
+  render(state: TUIState): void;
+    // Renders a simple textual neighborhood display:
+    //
+    //   [selected-branch]
+    //     → links to: branch-a, branch-b
+    //     ← linked from: branch-c
+    //     ── 2 hops: branch-d, branch-e
+    //
+    // No complex ASCII graph art. Simple, readable, functional.
+
+  handleNavigation(key: string, database: Database.Database, state: TUIState): TUIState;
+    // Arrow keys: navigate between listed branches
+    // Enter: recenter graph on selected branch (set graphRoot = selected branch)
+    // +/-: increase/decrease graph depth (1-3 hops)
+    // /: search for a branch to center on
+}
+```
+
+**Behavior**:
+- Simple textual neighborhood display, not full ASCII graph art.
+- Display format:
+  ```
+  [selected-branch]
+    → links to: branch-a, branch-b
+    ← linked from: branch-c
+    ── 2 hops: branch-d, branch-e
+  ```
+- Navigation: select a branch from the listed neighbors, press Enter to recenter the view on it.
+- Depth range: 1-3 hops (not 1-5). Default: 2.
+- No complex layout algorithm needed. The view queries edges directly from the database.
+- Outbound links: `SELECT target_path FROM edges WHERE source_path = ?`
+- Inbound links: `SELECT source_path FROM edges WHERE target_path = ?`
+- 2+ hops: use `searchGraph` with appropriate depth.
+
+**Tests** (`tests/unit/tui/graph.test.ts`):
+- Graph state updates graphRoot on recenter
+- Depth adjustment clamps to 1-3
+- Outbound and inbound links are displayed correctly
+
+**Verification gate**: Manual testing. Create branches with wiki-links, launch TUI, switch to graph view, navigate the neighborhood.
+
+---
+
+#### Step E.5: Health Panel
+
+**What**: A read-only health panel displaying forest health metrics from the HealthReport.
+
+**Where**:
+- `src/cli/tui/views/health.ts`
+
+**Interface** (`src/cli/tui/views/health.ts`):
+
+```typescript
+import type { TUIState } from "../types.js";
+import type { HealthReport } from "@memforest/shared";
+import type Database from "better-sqlite3";
+
+export interface HealthView {
+  render(state: TUIState, report: HealthReport): void;
+    // Renders:
+    //   Forest Health: <name>
+    //   ─────────────────────
+    //   Branches:    42 total (3 unindexed)
+    //   Edges:       87 total (5 broken)
+    //   Orphans:     2
+    //   Stale:       1
+    //
+    //   Broken Links:
+    //     - [[nonexistent-branch]] (from domains/auth)
+    //     - [[missing-ref]] (from ideas/concept)
+    //
+    //   Orphan Branches:
+    //     - research/standalone-note
+    //     - ideas/disconnected
+
+  handleInput(key: string, database: Database.Database, state: TUIState): Promise<TUIState>;
+    // r: refresh health data (recompute HealthReport)
+    // Arrow keys: scroll through broken links / orphan lists if they overflow
+}
+```
+
+**Behavior**:
+- Displays HealthReport metrics computed using the same logic as `memforest health` CLI command.
+- Shows: branch count, edge count, broken links list (with source context), orphan branches, stale count, unindexed count.
+- Keyboard shortcut `r` to refresh (recompute health data from DB + filesystem).
+- Read-only. No autonomous proposals, no approve/reject flow, no garden cycle trigger. Those are deferred to Phase 3 (Euclid agent integration).
+
+**Tests** (`tests/unit/tui/health.test.ts`):
+- Health report renders all expected metrics
+- Refresh updates the report data
+- Broken links display includes source branch context
+
+**Verification gate**: Manual testing. Launch TUI, switch to health view, verify metrics display, press `r` to refresh.
+
+---
+
+#### Step E.6: CLI Entry Points
+
+**What**: Wire `memforest` (no args) and `memforest tui` to launch the TUI.
+
+**Where**:
+- `src/cli/index.ts` — Updated
+- `src/cli/commands/tui.ts`
+
+**Interface**:
+
+```
+memforest (no arguments):
+  If stdin is a TTY → launch TUI
+  If stdin is not a TTY → print help (non-interactive context)
+
+memforest tui:
+  Always launch TUI.
+  Options:
+    --view, -v <view> — start on specific view (chat|browse|graph|health)
+  Behavior:
+    1. resolveActiveTenant()
+    2. launchTUI(tenant)
+  Errors:
+    - NoActiveForestError → "No active forest. Run 'memforest use <name>' first."
+    - Not a TTY → "TUI requires an interactive terminal."
+```
+
+**Tests** (`tests/unit/tui/entry.test.ts`):
+- `--view chat` sets initial view to chat
+- `--view browse` sets initial view to browse
+- `--view graph` sets initial view to graph
+- `--view health` sets initial view to health
+- Invalid `--view` value is rejected with error message
+
+**Verification gate**:
+```bash
+bun run build
+node dist/index.js init tui-final-test
+node dist/index.js use tui-final-test
+node dist/index.js upsert "ideas/test" "A test idea for the TUI [[ideas/another]]"
+node dist/index.js upsert "ideas/another" "Another idea linked from test"
+node dist/index.js tui                    # launches TUI
+node dist/index.js tui --view graph       # launches TUI in graph view
+node dist/index.js tui --view health      # launches TUI in health view
+# Ctrl+C to exit
+rm -rf ~/.memforest/forests/tui-final-test
+```
+Expected: TUI launches, all views render, navigation works, chat produces deterministic template responses.
+
+---
+
+## Appendix A: Phase 0 Dependency Graph
+
+```
+Milestone A: Project Scaffold + Forest Lifecycle
+  Step A.1: Project Scaffold
+    └─ Step A.2: Shared Types & Config
+        └─ Step A.3: Forest — Tenant Management
+
+Milestone B: Markdown Branches
+  Step B.1: Markdown CRUD (depends on A.3)
+
+Milestone C: SQLite Index with FTS and Edges
+  Step C.1: Database Setup (depends on B.1)
+    └─ Step C.2: Indexing
+        └─ Step C.3: Search
+
+Milestone D: CLI Commands + Integration Tests
+  Step D.1: CLI Command Wiring (depends on C.3)
+    └─ Step D.2: Integration Tests
+
+Milestone E: Minimal Euclid TUI
+  Step E.1: TUI Application Shell (depends on D.2)
+    ├─ Step E.2: Chat View (Deterministic)
+    ├─ Step E.3: Browse View
+    ├─ Step E.4: Graph View (Simplified)
+    └─ Step E.5: Health Panel
+        └─ Step E.6: CLI TUI Entry Points
+```
+
+## Appendix B: Phase 0 Package Reference
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `better-sqlite3` | ^11.0.0 | SQLite driver for Node.js |
+| `commander` | ^13.0.0 | CLI framework |
+| `gray-matter` | ^4.0.3 | YAML frontmatter parsing |
+| `smol-toml` | ^1.6.0 | TOML parsing/serialization |
+| `@anthropic-ai/pi-tui` | TBD | TUI framework (Milestone E) |
+| `@biomejs/biome` | ^1.9.0 | Linting + formatting |
+| `@types/better-sqlite3` | ^7.6.0 | TypeScript types for better-sqlite3 |
+| `@types/node` | ^22.0.0 | TypeScript types for Node.js |
+| `tsup` | ^8.0.0 | TypeScript bundler |
+| `typescript` | ^5.7.0 | Type checking |
+| `vitest` | ^3.0.0 | Test framework |
+
+**Deferred to Phase 1**:
+| `fastembed` | ^2.1.0 | Local embedding generation |
+| `sqlite-vec` | ^0.1.9 | Vector search extension for SQLite |
+
+## Appendix C: Deferred Items (Phase 1+)
+
+The following items are explicitly removed from Phase 0 and will be added in later phases:
+
+1. **Vector/Semantic Search** (Phase 1): `fastembed`, `sqlite-vec`, `vec_branches` table, `searchSemantic`, `EmbeddingError`, `embedding` config in `ForestConfig`, `"semantic"` search mode
+2. **Import Pipeline** (Phase 1): `memforest import obsidian/markdown` commands
+3. **Euclid Agent Runtime** (Phase 2): LLM-backed agent, plant/research/garden commands, autonomy enforcement, action logging
+4. **Skill Generation** (Phase 3): `memforest install` commands, SKILL.md templates
+5. **Advanced TUI** (Phase 3+): Autonomous garden proposals, approve/reject flows, daemon/watch mode, full graph visualization
+
+## Appendix D: Constitutional Cross-Reference (Phase 0)
+
+| Spec Requirement | Constitution Rule |
+|------------------|-------------------|
+| Tenant isolation in all search functions | 2.1, 4.1, 4.4, 4.5 |
+| No cross-domain imports | 2.2 |
+| Layering: CLI → Euclid → Mycelium → Forest | 2.3 |
+| Markdown is source of truth, DB is derived | 2.4 |
+| Tenant resolution at CLI boundary only | 2.5 |
+| `strict: true` in tsconfig | 3.1 |
+| No comments unless "why" is non-obvious | 3.2 |
+| Full-word naming (no abbreviations) | 3.3 |
+| Real SQLite in tests (no mocks) | 3.5 |
+| Biome for formatting/linting | 3.6 |
+| Import sanitization (path traversal prevention) | 4.2 |
+## Phase 1: Vector Search & Embeddings
+
+**Goal**: Add semantic search via local embeddings. Upgrade hybrid search with vector component.
+
+**Prerequisites**: Phase 0 complete (Milestones A-E).
+
+**Deliverables**:
+- Local embedding generation via fastembed (BGESmallENV15, 384 dimensions)
+- sqlite-vec extension loaded, `vec_branches` virtual table
+- `memforest search --mode semantic` command
+- Hybrid search upgraded with semantic weight
+- `memforest reindex` regenerates embeddings
+- All tests green via `bun run test`, all lint green via `bun run lint`, type-check green via `bun run typecheck`
+
+---
+
+### Step 1.1: Embedder
+
+**What**: Create the embedding generation module using fastembed. Lazy singleton model initialization, single and batch embedding generation.
+
+**Where**:
+- `src/mycelium/embedder.ts` — Embedding generation via fastembed
+- `src/shared/errors.ts` — Add `EmbeddingError`
+- `src/shared/types.ts` — Add `embedding` config to `ForestConfig`
+- `src/mycelium/index.ts` — Updated barrel export
+
+**Interface** (`src/mycelium/embedder.ts`):
+
+```typescript
+import { EmbeddingModel, FlagEmbedding } from "fastembed";
+
+let embeddingInstance: FlagEmbedding | null = null;
+
+export async function getEmbedder(): Promise<FlagEmbedding>;
+  // Lazy singleton. On first call:
+  //   embeddingInstance = await FlagEmbedding.init({ model: EmbeddingModel.BGESmallENV15 });
+  // Returns cached instance on subsequent calls.
+  // BGESmallENV15 produces 384-dimensional vectors. Fast, small model download (~45MB).
+  // Model is downloaded and cached automatically by fastembed on first use
+  //   (cached at <os cache dir>/fastembed_cache/).
+
+export async function generateEmbedding(text: string): Promise<number[]>;
+  // 1. Get embedder instance.
+  // 2. Call embeddingInstance.queryEmbed(text) — returns number[].
+  // 3. Return the embedding vector (384 floats).
+  // Throws EmbeddingError on failure.
+
+export async function generateEmbeddings(texts: string[]): Promise<number[][]>;
+  // 1. Get embedder instance.
+  // 2. Call embeddingInstance.embed(texts) — returns AsyncGenerator<number[][]>.
+  // 3. Collect all batches, flatten to number[][].
+  // 4. Return array of embedding vectors, one per input text.
+  // Throws EmbeddingError on failure.
+```
+
+**Error class** (add to `src/shared/errors.ts`):
+
+```typescript
+export class EmbeddingError extends MemforestError {
+  constructor(message: string) {
+    super(message, "EMBEDDING_ERROR");
+  }
+}
+```
+
+**Config update** (add `embedding` to `ForestConfig` in `src/shared/types.ts`):
+
+```typescript
+export interface ForestConfig {
+  name: string;
+  createdAt: string;        // ISO 8601
+  description: string;
+  embedding: {
+    model: string;          // default: "BGESmallENV15"
+    dimensions: number;     // default: 384
+  };
+}
+```
+
+**Behavior**:
+- fastembed downloads the model on first use (~45MB). The spec assumes this is acceptable for a CLI tool. The model is cached globally and shared across forests.
+- The singleton pattern avoids reinitializing the model on every call. The embedder is process-scoped, not tenant-scoped — all tenants use the same model.
+- `generateEmbedding` uses `queryEmbed` (optimized for single queries). `generateEmbeddings` uses `embed` (optimized for batches).
+
+**Dependencies** (add to `package.json`):
+```json
+"fastembed": "^2.1.0"
+```
+
+**Tests** (`tests/unit/mycelium/embedder.test.ts`):
+- `generateEmbedding` returns a 384-length number array
+- `generateEmbedding` returns consistent results for the same input
+- `generateEmbeddings` batch returns correct number of vectors
+- These tests will download the model on first run. Mark them with a `slow` tag if needed.
+
+**Verification gate**:
+```bash
+bun run typecheck
+bun run test -- tests/unit/mycelium/embedder.test.ts
+```
+Expected: all tests pass. Embedding model downloads successfully on first run.
+
+---
+
+### Step 1.2: Database Extension
+
+**What**: Add sqlite-vec extension to the database layer. Load the extension on database open, create `vec_branches` virtual table.
+
+**Where**:
+- `src/mycelium/database.ts` — Updated to load sqlite-vec
+- `src/mycelium/schema.ts` — Add vec_branches schema constant
+
+**Schema** (add to `src/mycelium/schema.ts`):
+
+The sqlite-vec virtual table is created programmatically after loading the extension:
+
+```sql
+-- Created after sqlite-vec extension is loaded
+CREATE VIRTUAL TABLE IF NOT EXISTS vec_branches USING vec0(
+  branch_id INTEGER PRIMARY KEY,
+  embedding FLOAT[384]
+);
+```
+
+The `384` dimension matches `BGESmallENV15` from fastembed (default model). If the embedding model changes, the dimension must match.
+
+**Interface updates** (`src/mycelium/database.ts`):
+
+```typescript
+export function openDatabase(tenant: TenantContext): Database.Database;
+  // 1. Open better-sqlite3 connection to tenant.databasePath.
+  // 2. Enable WAL mode: db.pragma("journal_mode = WAL")
+  // 3. Load sqlite-vec extension: db.loadExtension(sqliteVecPath)
+  //    - sqliteVecPath obtained via: import * as sqliteVec from "sqlite-vec"; sqliteVec.getLoadablePath()
+  // 4. Return the database connection.
+  // Note: does NOT run schema creation. Use initDatabase for that.
+
+export function initDatabase(tenant: TenantContext): Database.Database;
+  // 1. Call openDatabase(tenant).
+  // 2. Run all CREATE TABLE/TRIGGER statements from schema.ts inside a transaction.
+  // 3. Create the vec_branches virtual table.
+  // 4. Return the initialized database connection.
+```
+
+**Migration**: If an existing `mycelium.db` from Phase 0 doesn't have `vec_branches`, create it on open via `initDatabase`. The `CREATE VIRTUAL TABLE IF NOT EXISTS` guard makes this idempotent.
+
+**Dependencies** (add to `package.json`):
+```json
+"sqlite-vec": "^0.1.9"
+```
+
+**Behavior**:
+- The sqlite-vec extension is loaded via the npm package's `getLoadablePath()` which returns the path to the compiled native extension for the current platform.
+- `openDatabase` NEVER opens a database for a different tenant than the one specified. This is a constitutional invariant (CONSTITUTION 4.5: no `ATTACH DATABASE` across tenants).
+
+**Tests** (`tests/unit/mycelium/database-vec.test.ts`):
+- sqlite-vec extension loads successfully
+- `vec_branches` virtual table is created and queryable
+- `initDatabase` on existing Phase 0 DB adds `vec_branches` without breaking existing tables
+- Inserting and querying vectors works end-to-end
+
+**Verification gate**:
+```bash
+bun run typecheck
+bun run test -- tests/unit/mycelium/database-vec.test.ts
+```
+Expected: all tests pass. The sqlite-vec extension loads without error on the host platform.
+
+---
+
+### Step 1.3: Semantic Search
+
+**What**: Implement semantic (vector) search using sqlite-vec and the embedder.
+
+**Where**:
+- `src/mycelium/search.ts` — Add `searchSemantic` function
+- `src/shared/types.ts` — Update `SearchResult.mode` to include `"semantic"`
+- `src/mycelium/index.ts` — Updated barrel export
+
+**Interface** (`src/mycelium/search.ts`):
+
+```typescript
+export async function searchSemantic(
+  database: Database.Database,
+  query: string,
+  limit?: number
+): Promise<SearchResult[]>;
+  // 1. Generate embedding for query: queryVector = await generateEmbedding(query).
+  // 2. Query sqlite-vec:
+  //    SELECT branch_id, distance
+  //    FROM vec_branches
+  //    WHERE embedding MATCH ?
+  //    ORDER BY distance
+  //    LIMIT ?
+  //    Pass the query vector as a JSON-serialized float array.
+  // 3. For each result, load the full branch data from branches table.
+  // 4. Default limit: 20.
+  // 5. Map to SearchResult[] with mode = "semantic".
+  // 6. Score = 1 - distance (cosine distance; 0 = identical, 1 = orthogonal).
+  //    Clamp to [0, 1].
+```
+
+**Type update** (`src/shared/types.ts`):
+
+```typescript
+export interface SearchResult {
+  branch: Branch;
+  score: number;
+  mode: "fts" | "semantic" | "graph";
+}
+```
+
+**Behavior**:
+- Semantic search uses cosine distance from sqlite-vec. The `distance` column is 0 (identical) to 2 (opposite). Score = 1 - (distance / 2) normalizes to 0-1.
+- Empty queries return empty results. No error thrown — it's a valid "no results" case.
+
+**Tests** (`tests/unit/mycelium/search-semantic.test.ts`):
+- Setup: create a forest, write 5+ branches with varied content, index them all with embeddings
+- `searchSemantic("authentication patterns")` returns semantically similar branches
+- `searchSemantic` results are different from FTS results for the same concept expressed differently
+- `searchSemantic("nonexistent gibberish xyz")` returns results (semantic search always returns nearest neighbors) but with low scores
+- `searchSemantic("")` returns empty array
+
+**Verification gate**:
+```bash
+bun run typecheck
+bun run test -- tests/unit/mycelium/search-semantic.test.ts
+```
+Expected: all tests pass.
+
+---
+
+### Step 1.4: Hybrid Search Upgrade
+
+**What**: Upgrade `searchHybrid` to include the vector/semantic component. Update `indexBranch` to generate embeddings. Add `memforest search --mode semantic` CLI support. Update `memforest reindex` to regenerate embeddings.
+
+**Where**:
+- `src/mycelium/search.ts` — Updated `searchHybrid`
+- `src/mycelium/indexer.ts` — Updated `indexBranch` to generate embeddings
+- `src/shared/types.ts` — Add `totalSemantic` back to `HybridSearchResult`
+- `src/cli/commands/search.ts` — Add `"semantic"` mode dispatch
+- `src/cli/commands/reindex.ts` — Now regenerates embeddings
+
+**Interface updates** (`src/mycelium/search.ts`):
+
+```typescript
+export async function searchHybrid(
+  database: Database.Database,
+  query: string,
+  options?: {
+    limit?: number;
+    ftsWeight?: number;      // default: 0.3
+    semanticWeight?: number; // default: 0.5
+    graphWeight?: number;    // default: 0.2
+  }
+): Promise<HybridSearchResult>;
+  // 1. Run searchFTS and searchSemantic in parallel (Promise.all).
+  // 2. For graph search: take top FTS result's relative_path as the graph start node.
+  //    If no FTS results, skip graph search.
+  // 3. Merge results by relativePath:
+  //    a. For each unique relativePath across all result sets:
+  //       combinedScore = (ftsScore * ftsWeight) + (semanticScore * semanticWeight) + (graphScore * graphWeight)
+  //       where missing scores default to 0.
+  //    b. Pick the mode that contributed the highest individual score as the result's mode.
+  // 4. Sort by combinedScore descending.
+  // 5. Deduplicate by relativePath.
+  // 6. Apply limit (default 20).
+  // 7. Return HybridSearchResult with counts per mode.
+```
+
+**Type update** (`src/shared/types.ts`):
+
+```typescript
+export interface HybridSearchResult {
+  results: SearchResult[];
+  query: string;
+  totalFTS: number;
+  totalSemantic: number;
+  totalGraph: number;
+}
+```
+
+**Indexer update** (`src/mycelium/indexer.ts`):
+
+Update `indexBranch` to include embedding generation as step 4:
+
+```typescript
+export async function indexBranch(
+  database: Database.Database,
+  tenant: TenantContext,
+  branch: Branch
+): Promise<void>;
+  // 1. Upsert into branches table:
+  //    - If row with relative_path exists: UPDATE content, title, status, tags, aliases, updated_at, indexed_at.
+  //    - If not: INSERT new row.
+  //    The FTS5 triggers handle fts_branches sync automatically.
+  // 2. Delete all existing edges WHERE source_path = branch.relativePath.
+  // 3. For each wiki-link in branch.wikiLinks:
+  //    a. Insert edges with target_resolved = 0 (unresolved by default).
+  //    b. INSERT INTO edges (source_path, target_path, target_resolved, created_at).
+  //       Use INSERT OR IGNORE to handle duplicate edges gracefully.
+  // 4. Generate embedding for the branch content:
+  //    a. Concatenate title + " " + content as the embedding input.
+  //    b. Call generateEmbedding(text).
+  //    c. Get the branch's id from the branches table.
+  //    d. DELETE FROM vec_branches WHERE branch_id = <id> (remove old embedding).
+  //    e. INSERT INTO vec_branches (branch_id, embedding) VALUES (<id>, <vector>).
+```
+
+**CLI update** (`src/cli/commands/search.ts`):
+
+Add `"semantic"` to the mode dispatch:
+```
+--mode, -m <mode> — "fts" | "semantic" | "graph" | "hybrid" (default: "hybrid")
+```
+
+Dispatch:
+```
+- "semantic": searchSemantic(db, query, limit)
+```
+
+**Reindex update** (`src/cli/commands/reindex.ts`):
+
+`memforest reindex` now regenerates embeddings as part of `reindexForest`, since `indexBranch` includes embedding generation.
+
+**Behavior**:
+- Hybrid search weights default to favoring semantic (0.5) over FTS (0.3) over graph (0.2). This can be tuned per query via options.
+- The graph component of hybrid search uses the top FTS result as the starting node. This grounds the graph traversal in relevance rather than starting from an arbitrary node.
+- Embedding is generated from `title + " " + content`. This gives the title weight in semantic search without requiring a separate title embedding.
+- `reindexForest` is destructive to the index (not to markdown files). It rebuilds from scratch including embeddings. The CLI warns before running.
+
+**Tests** (`tests/unit/mycelium/search-hybrid.test.ts`):
+- Setup: create a forest, write 5+ branches with varied content and wiki-links, index them all
+- `searchHybrid("auth")` returns merged, deduplicated, reranked results
+- `searchHybrid` result scores reflect weighted combination
+- `searchHybrid` with `{ ftsWeight: 1, semanticWeight: 0, graphWeight: 0 }` produces same ranking as pure FTS
+- `searchHybrid("authentication patterns")` returns results from multiple modes
+- Verify at least one result has mode "fts" and at least one has mode "semantic"
+
+**Tests** (`tests/unit/mycelium/indexer-embedding.test.ts`):
+- `indexBranch` inserts into vec_branches
+- `indexBranch` called twice on same branch updates embedding (upsert, not duplicate)
+- `reindexForest` rebuilds embeddings from scratch
+
+**Tests** (`tests/integration/search-semantic.test.ts`):
+- Setup: create forest with 5 branches (same as Phase 0 integration search tests):
+  - "domains/auth-patterns": "JWT tokens and session management for authentication"
+  - "domains/sessions": "Server-side sessions using Redis, session cookies"
+  - "research/oauth": "OAuth 2.0 authorization code flow with PKCE"
+  - "ideas/api-gateway": "API gateway pattern for [[domains/auth-patterns]] and rate limiting"
+  - "ideas/microservices": "Microservice architecture with [[domains/sessions]] and [[research/oauth]]"
+  Index all branches. Run resolveEdges.
+
+- `searchSemantic(db, "how to log in users")` should include auth-patterns or sessions
+- `searchSemantic(db, "third party login")` should include research/oauth
+- `searchHybrid(db, "authentication")` must return results from multiple modes
+- Verify at least one result has mode "fts" and at least one has mode "semantic"
+
+**Verification gate**:
+```bash
+bun run typecheck
+bun run test -- tests/unit/mycelium/search-hybrid.test.ts
+bun run test -- tests/unit/mycelium/indexer-embedding.test.ts
+bun run test -- tests/integration/search-semantic.test.ts
+bun run build
+node dist/index.js init vec-test
+node dist/index.js use vec-test
+node dist/index.js upsert "domains/auth" "JWT tokens and session management for authentication"
+node dist/index.js search "how to log in users" --mode semantic
+node dist/index.js search "authentication" --mode hybrid
+node dist/index.js reindex
+rm -rf ~/.memforest/forests/vec-test
+```
+Expected: all tests pass. Semantic search returns relevant results. Hybrid search includes both FTS and semantic results.
+
+---
+
+## Phase 2: Import
 
 **Goal**: Build the Obsidian import pipeline. Scan, map, resolve, embed, index, health check. Universal onboarding from any markdown folder.
 
-**Prerequisites**: Phase 0 complete. Forest CRUD, mycelium indexing, and search all working.
+**Prerequisites**: Phase 1 complete. Forest CRUD, mycelium indexing with embeddings, and search all working.
 
 **Deliverables**:
 - `memforest import obsidian <path>` command
@@ -1457,9 +2179,11 @@ Expected: zero errors.
 - Import report with stats
 - Tests covering Obsidian-specific conventions (aliases, folder structure, wiki-link variations)
 
+**Note**: The import pipeline now generates embeddings during indexing, since Phase 1 added vector support to `indexBranch`.
+
 ---
 
-### Step 1.1: Import Domain -- Scanner
+### Step 2.1: Import Domain -- Scanner
 
 **What**: Scan a directory for markdown files, parse each, extract metadata.
 
@@ -1553,7 +2277,7 @@ bun run test -- tests/unit/import/scanner.test.ts
 
 ---
 
-### Step 1.2: Import Domain -- Mapper
+### Step 2.2: Import Domain -- Mapper
 
 **What**: Map scanned files to memforest tree/branch structure. Handle directory flattening, name conflicts, and deduplication.
 
@@ -1589,7 +2313,7 @@ export function mapToForest(
 
 **Behavior**:
 - The mapper converts arbitrary folder structures into valid memforest tree/branch names.
-- Name sanitization: `[^a-zA-Z0-9._-]` → `-`, collapse multiple hyphens, lowercase.
+- Name sanitization: `[^a-zA-Z0-9._-]` -> `-`, collapse multiple hyphens, lowercase.
 - Conflict resolution is deterministic: files are processed in sorted order, first file keeps the original name, subsequent duplicates get `-2`, `-3`, etc.
 
 **Tests** (`tests/unit/import/mapper.test.ts`):
@@ -1607,7 +2331,7 @@ bun run test -- tests/unit/import/mapper.test.ts
 
 ---
 
-### Step 1.3: Import Domain -- Link Resolver
+### Step 2.3: Import Domain -- Link Resolver
 
 **What**: Resolve Obsidian wiki-link conventions to memforest branch paths. Handle aliases, folder-qualified links, and ambiguous references.
 
@@ -1669,7 +2393,7 @@ bun run test -- tests/unit/import/resolver.test.ts
 
 ---
 
-### Step 1.4: Import Domain -- Pipeline Orchestrator
+### Step 2.4: Import Domain -- Pipeline Orchestrator
 
 **What**: Orchestrate the full import pipeline: scan, map, resolve, write branches, embed, index, health check, report.
 
@@ -1739,7 +2463,7 @@ bun run test -- tests/integration/import-pipeline.test.ts
 
 ---
 
-### Step 1.5: CLI -- Import Commands
+### Step 2.5: CLI -- Import Commands
 
 **What**: Wire `memforest import obsidian <path>` and `memforest import markdown <path>` commands.
 
@@ -1795,11 +2519,11 @@ Expected: import completes, health shows 3 branches with edges, search returns r
 
 ---
 
-## Phase 2: Euclid Agent
+## Phase 3: Euclid Agent Runtime
 
-**Goal**: Wire pi-coding-agent as Euclid (the autonomous gardener). Integrate plant-idea and research-breakdown as capabilities. Implement active maintenance cycles.
+**Goal**: Wire pi-coding-agent as Euclid (the autonomous gardener). LLM-backed synthesis for `ask`. Active maintenance cycles. Autonomous gardening.
 
-**Prerequisites**: Phase 1 complete. Import pipeline working. Forest CRUD, search, and indexing all stable.
+**Prerequisites**: Phase 2 complete. Import pipeline working. Forest CRUD, search, and indexing all stable.
 
 **Deliverables**:
 - Euclid agent runtime using pi-coding-agent
@@ -1809,10 +2533,11 @@ Expected: import completes, health shows 3 branches with edges, search returns r
 - `memforest ask "<question>"` upgraded with Euclid synthesis
 - Autonomy boundary enforcement
 - Structured action logging
+- TUI upgraded with real Euclid integration and garden view
 
 ---
 
-### Step 2.1: Euclid Domain -- Agent Runtime
+### Step 3.1: Euclid Domain -- Agent Runtime
 
 **What**: Set up the Euclid agent using pi-coding-agent. Define the system prompt, tools, and runtime configuration.
 
@@ -1980,7 +2705,7 @@ MEMFOREST_LLM_PROVIDER=anthropic MEMFOREST_LLM_MODEL=claude-sonnet-4-20250514 bu
 
 ---
 
-### Step 2.2: Euclid Domain -- Autonomy Enforcement
+### Step 3.2: Euclid Domain -- Autonomy Enforcement
 
 **What**: Implement the autonomy boundary system. Auto-level actions execute immediately. Confirm-level actions return proposals for user approval.
 
@@ -2042,7 +2767,7 @@ bun run test -- tests/unit/euclid/autonomy.test.ts
 
 ---
 
-### Step 2.3: Euclid Domain -- Action Logger
+### Step 3.3: Euclid Domain -- Action Logger
 
 **What**: Implement structured action logging for all Euclid operations. Every action produces a log entry answering what, where, why, when (CONSTITUTION 8.2).
 
@@ -2092,7 +2817,7 @@ export function executeAction(database: Database.Database, actionId: number): vo
 **Behavior**:
 - The action log is stored in the tenant's mycelium.db. This maintains tenant isolation — each forest has its own action history.
 - The `initActionLog` function is called during `initDatabase` (update Step 0.5's `initDatabase` to include this table).
-- Confirm-level actions are logged with `executed = 0`. The user reviews them via `memforest garden --pending` (added in Step 2.4) and approves individually.
+- Confirm-level actions are logged with `executed = 0`. The user reviews them via `memforest garden --pending` (added in Step 3.4) and approves individually.
 
 **Tests** (`tests/unit/euclid/action-log.test.ts`):
 - `logAction` inserts a record
@@ -2108,7 +2833,7 @@ bun run test -- tests/unit/euclid/action-log.test.ts
 
 ---
 
-### Step 2.4: CLI -- Euclid Commands
+### Step 3.4: CLI -- Euclid Commands
 
 **What**: Wire Euclid commands: `plant`, `research`, `garden`, upgrade `ask`.
 
@@ -2191,7 +2916,7 @@ Behavior:
     3. Print summary
 ```
 
-**`memforest ask "<question>"` — UPGRADED** (`src/cli/commands/ask.ts`):
+**`memforest ask "<question>"` -- UPGRADED** (`src/cli/commands/ask.ts`):
 ```
 Arguments: question (required)
 Options:
@@ -2229,11 +2954,103 @@ rm -rf ~/.memforest/forests/euclid-test
 
 ---
 
-## Phase 3: Integration
+### Step 3.5: TUI Upgrade
 
-**Goal**: Generate SKILL.md files for agent harnesses. Make memforest installable into Claude Code, OpenCode, and Pi with a single command.
+**What**: Upgrade the TUI with real Euclid integration. Replace deterministic template responses in chat view with real `EuclidAgent.ask()`. Upgrade the health panel into a full garden view with cycle trigger, autonomous proposals, and approve/reject flow.
 
-**Prerequisites**: Phase 2 complete. Euclid agent functional. CLI commands stable.
+**Where**:
+- `src/cli/tui/views/chat.ts` — Updated to use real EuclidAgent
+- `src/cli/tui/views/garden.ts` — New garden view
+- `src/cli/tui/types.ts` — Add `"garden"` to `TUIView`
+- `src/cli/tui/app.ts` — Register garden view
+
+**Interface** (`src/cli/tui/types.ts` update):
+
+```typescript
+export type TUIView = "chat" | "browse" | "graph" | "garden" | "health";
+```
+
+**Chat view upgrade** (`src/cli/tui/views/chat.ts`):
+
+```typescript
+import type { TUIState } from "../types.js";
+import type { EuclidAgent } from "@memforest/euclid";
+
+export interface ChatView {
+  render(state: TUIState): void;
+    // Renders:
+    //   - Chat history (scrollable, newest at bottom)
+    //   - Input field at bottom
+    //   - "Euclid is thinking..." indicator while waiting for response
+
+  handleInput(input: string, agent: EuclidAgent, state: TUIState): Promise<TUIState>;
+    // 1. Append { role: "user", content: input } to chatHistory.
+    // 2. Call agent.ask(input).
+    // 3. Append { role: "euclid", content: response } to chatHistory.
+    // 4. Return updated state.
+}
+```
+
+**Garden view** (`src/cli/tui/views/garden.ts`):
+
+```typescript
+export interface GardenView {
+  render(state: TUIState): void;
+    // Renders:
+    //   - Health summary at top
+    //   - Action log (recent auto-executed actions)
+    //   - Pending proposals (confirm-level actions awaiting approval)
+    //   - "Run garden cycle" button
+
+  handleAction(key: string, agent: EuclidAgent, state: TUIState): Promise<TUIState>;
+    // g: trigger garden cycle
+    // Enter on pending action: show detail + approve/reject dialog
+    // y: approve selected pending action
+    // n: reject selected pending action
+    // r: refresh health data
+}
+```
+
+**Behavior**:
+- Chat messages are rendered with visual distinction between user and Euclid (different colors/prefixes).
+- Euclid's responses include source citations (branch paths) from search results.
+- While Euclid is processing, a spinner or "thinking..." indicator is shown.
+- Chat history is scrollable. Long responses are word-wrapped.
+- The garden view is a dashboard. Top section shows HealthReport metrics. Middle shows the action log. Bottom shows pending proposals.
+- Running a garden cycle calls `agent.garden()` and updates the display with the report.
+- Pending actions show type, description, affected paths, and rationale. The user can approve or reject each one.
+- Approved actions are executed immediately and logged. Rejected actions are removed from pending.
+
+**Tests**: TUI tests are primarily manual. Automated tests focus on the state management logic.
+
+**Tests** (`tests/unit/tui/garden-state.test.ts`):
+- Garden cycle updates state with GardenReport
+- Approving a pending action removes it from pending list
+- Rejecting a pending action removes it from pending list
+
+**Verification gate**:
+```bash
+bun run build
+export MEMFOREST_LLM_PROVIDER=anthropic
+export MEMFOREST_LLM_MODEL=claude-sonnet-4-20250514
+node dist/index.js init tui-euclid-test
+node dist/index.js use tui-euclid-test
+node dist/index.js upsert "ideas/test" "A test idea about [[ideas/another]]"
+node dist/index.js upsert "ideas/another" "Another idea linked from test"
+node dist/index.js tui --view chat    # type a question, verify Euclid responds
+node dist/index.js tui --view garden  # run garden cycle, review proposals
+# Ctrl+C to exit
+rm -rf ~/.memforest/forests/tui-euclid-test
+```
+Expected: Chat view produces real Euclid responses. Garden view shows health summary and allows garden cycle trigger with approve/reject flow.
+
+---
+
+## Phase 4: Integration & Distribution
+
+**Goal**: Generate SKILL.md files for agent harnesses. Make memforest installable into Claude Code, OpenCode, and Pi with a single command. Cross-forest search.
+
+**Prerequisites**: Phase 3 complete. Euclid agent functional. CLI commands stable.
 
 **Deliverables**:
 - `memforest install claude-code` command
@@ -2241,10 +3058,11 @@ rm -rf ~/.memforest/forests/euclid-test
 - `memforest install pi` command
 - `memforest install --format skill.md` command (generic)
 - Generated SKILL.md files that instruct agents to use memforest commands
+- Cross-forest search and ask
 
 ---
 
-### Step 3.1: Skill Domain -- Template Engine
+### Step 4.1: Skill Domain -- Template Engine
 
 **What**: Build the SKILL.md template system. Define templates for each agent harness format.
 
@@ -2329,7 +3147,7 @@ bun run test -- tests/unit/skill/templates.test.ts
 
 ---
 
-### Step 3.2: CLI -- Install Commands
+### Step 4.2: CLI -- Install Commands
 
 **What**: Wire `memforest install <harness>` command.
 
@@ -2382,334 +3200,198 @@ Expected: all skill files are written with correct content referencing memforest
 
 ---
 
-## Phase 4: TUI
+### Step 4.3: Cross-Forest Search
 
-**Goal**: Build an interactive terminal UI using pi-tui. Chat with Euclid. Visual graph exploration. Garden sessions.
-
-**Prerequisites**: Phase 3 complete. All CLI commands stable. Euclid agent functional.
-
-**Deliverables**:
-- `memforest` (no args) opens TUI
-- `memforest tui` explicitly opens TUI
-- Chat interface with Euclid
-- Forest browser (tree/branch navigation)
-- Graph visualization (ASCII graph of connections)
-- Garden session (interactive maintenance)
-
----
-
-### Step 4.1: TUI -- Application Shell
-
-**What**: Set up the pi-tui application with navigation, panels, and keyboard shortcuts.
+**What**: Enable searching and asking across multiple forests. Results are grouped by source forest, never merged into a single ranked list.
 
 **Where**:
-- `src/cli/tui/app.ts` — Main TUI application
-- `src/cli/tui/types.ts` — TUI-specific types
-- `src/cli/tui/index.ts` — Barrel export
+- `src/mycelium/cross-forest.ts` — Cross-forest search orchestration
+- `src/cli/commands/search.ts` — Updated with `--forest` option
+- `src/cli/commands/ask.ts` — Updated with `--forest` option
+- `src/shared/types.ts` — Add cross-forest result types
 
-**Interface** (`src/cli/tui/types.ts`):
+**Interface** (`src/shared/types.ts` additions):
 
 ```typescript
-export type TUIView = "chat" | "browse" | "graph" | "garden" | "health";
+export interface CrossForestSearchResult {
+  forestName: string;
+  results: SearchResult[];
+}
 
-export interface TUIState {
-  activeView: TUIView;
-  tenant: TenantContext;
-  chatHistory: Array<{ role: "user" | "euclid"; content: string }>;
-  selectedBranch: string | null;
-  graphRoot: string | null;
-  graphDepth: number;
+export interface CrossForestHybridResult {
+  forestName: string;
+  result: HybridSearchResult;
 }
 ```
 
-**Interface** (`src/cli/tui/app.ts`):
+**Interface** (`src/mycelium/cross-forest.ts`):
 
 ```typescript
-import type { TenantContext } from "@memforest/shared";
+import type { TenantContext, SearchResult, HybridSearchResult, CrossForestSearchResult, CrossForestHybridResult } from "@memforest/shared";
 
-export async function launchTUI(tenant: TenantContext): Promise<void>;
-  // 1. Initialize pi-tui application.
-  // 2. Set up panels:
-  //    - Header: "memforest v<version> | Forest: <name> | View: <activeView>"
-  //    - Sidebar: view switcher (chat/browse/graph/garden/health)
-  //    - Main: active view content
-  //    - Footer: keybindings help
-  // 3. Keyboard shortcuts:
-  //    - Ctrl+C / q: quit
-  //    - Tab: cycle views
-  //    - 1-5: jump to specific view
-  //    - /: focus search input
-  //    - Enter: send chat message / select item
-  // 4. Start event loop.
+export async function searchAcrossForests(
+  forests: TenantContext[],
+  query: string,
+  options?: {
+    mode?: "fts" | "semantic" | "graph" | "hybrid";
+    limit?: number;
+  }
+): Promise<CrossForestSearchResult[]>;
+  // 1. For each forest in parallel:
+  //    a. openDatabase(forest)
+  //    b. Run search with specified mode (default: hybrid)
+  //    c. closeDatabase
+  // 2. Return results grouped by forest name.
+  // 3. Results are NEVER merged across forests — each forest's results are isolated.
+  // 4. Each forest's results are independently ranked.
+
+export async function askAcrossForests(
+  forests: TenantContext[],
+  question: string
+): Promise<CrossForestHybridResult[]>;
+  // 1. For each forest in parallel:
+  //    a. openDatabase(forest)
+  //    b. searchHybrid(db, question, { limit: 5 })
+  //    c. closeDatabase
+  // 2. Return results grouped by forest name.
+  // 3. Results tagged by source forest, never merged.
+```
+
+**CLI updates**:
+
+**`memforest search "<query>" --forest a,b`** (`src/cli/commands/search.ts` update):
+```
+New option:
+  --forest <names> — comma-separated forest names, or "all" for all forests
+Behavior:
+  If --forest is provided:
+    1. Parse forest names (split on comma, or listForests() if "all")
+    2. Construct TenantContext for each forest
+    3. searchAcrossForests(forests, query, { mode, limit })
+    4. Print results grouped by forest:
+       === Forest: personal ===
+       SCORE  MODE      PATH                    TITLE
+       0.92   semantic  domains/auth-patterns   Authentication Patterns
+       
+       === Forest: work ===
+       SCORE  MODE      PATH                    TITLE
+       0.87   fts       research/jwt-tokens     JWT Token Research
+    5. If --json: output as JSON array of CrossForestSearchResult
+  If --forest is not provided:
+    Existing single-forest behavior (unchanged)
+```
+
+**`memforest ask "<question>" --forest all`** (`src/cli/commands/ask.ts` update):
+```
+New option:
+  --forest <names> — comma-separated forest names, or "all"
+Behavior:
+  If --forest is provided:
+    1. Parse forest names
+    2. askAcrossForests(forests, question)
+    3. Print results grouped by forest
+    4. If --json: output as JSON
+  If --forest is not provided:
+    Existing single-forest behavior (unchanged)
 ```
 
 **Behavior**:
-- The TUI is a pi-tui application. pi-tui handles rendering, input, and layout.
-- The TUI resolves tenant context once at launch (same as CLI commands).
-- State is managed locally in the TUI process. No persistence beyond the session (chat history is ephemeral).
+- Cross-forest search opens each forest's database independently, runs the search, and closes it. No `ATTACH DATABASE` across tenants (CONSTITUTION 4.5).
+- Results are grouped by source forest and never merged into a single ranked list. This preserves tenant isolation at the presentation layer.
+- Parallel execution: all forests are searched concurrently via `Promise.all` for performance.
+- The `--forest all` shorthand uses `listForests()` to discover all available forests.
 
-**Tests**: TUI tests are primarily manual. Automated tests focus on the state management logic, not rendering.
+**Tests** (`tests/unit/mycelium/cross-forest.test.ts`):
+- `searchAcrossForests` with 2 forests returns results grouped by forest
+- Results from forest A never appear in forest B's group
+- `askAcrossForests` returns results tagged by source forest
+- Empty forest returns empty result group (not omitted)
 
-**Tests** (`tests/unit/tui/state.test.ts`):
-- View switching updates activeView
-- Chat history appends messages correctly
-- Branch selection updates selectedBranch
+**Tests** (`tests/integration/cross-forest.test.ts`):
+- Create 2 forests with different content
+- `searchAcrossForests` returns relevant results from each forest independently
+- Content in forest A is not searchable from forest B's result set
+- `--forest all` includes all forests
 
 **Verification gate**:
 ```bash
+bun run typecheck
+bun run test -- tests/unit/mycelium/cross-forest.test.ts
+bun run test -- tests/integration/cross-forest.test.ts
 bun run build
-node dist/index.js init tui-test
-node dist/index.js use tui-test
-node dist/index.js tui  # launches TUI, verify it renders without crashing
-# Ctrl+C to exit
-rm -rf ~/.memforest/forests/tui-test
+node dist/index.js init forest-a
+node dist/index.js use forest-a
+node dist/index.js upsert "domains/auth" "Authentication patterns for forest A"
+node dist/index.js init forest-b
+node dist/index.js use forest-b
+node dist/index.js upsert "domains/deploy" "Deployment patterns for forest B"
+node dist/index.js search "patterns" --forest forest-a,forest-b
+node dist/index.js search "patterns" --forest all
+node dist/index.js ask "What patterns do we have?" --forest all --raw
+# Cleanup
+rm -rf ~/.memforest/forests/forest-a ~/.memforest/forests/forest-b
 ```
-
----
-
-### Step 4.2: TUI -- Chat View
-
-**What**: Implement the chat interface. Users type questions, Euclid responds with synthesized answers.
-
-**Where**:
-- `src/cli/tui/views/chat.ts`
-
-**Interface** (`src/cli/tui/views/chat.ts`):
-
-```typescript
-import type { TUIState } from "../types.js";
-import type { EuclidAgent } from "@memforest/euclid";
-
-export interface ChatView {
-  render(state: TUIState): void;
-    // Renders:
-    //   - Chat history (scrollable, newest at bottom)
-    //   - Input field at bottom
-    //   - "Euclid is thinking..." indicator while waiting for response
-
-  handleInput(input: string, agent: EuclidAgent, state: TUIState): Promise<TUIState>;
-    // 1. Append { role: "user", content: input } to chatHistory.
-    // 2. Call agent.ask(input).
-    // 3. Append { role: "euclid", content: response } to chatHistory.
-    // 4. Return updated state.
-}
-```
-
-**Behavior**:
-- Chat messages are rendered with visual distinction between user and Euclid (different colors/prefixes).
-- Euclid's responses include source citations (branch paths) from search results.
-- While Euclid is processing, a spinner or "thinking..." indicator is shown.
-- Chat history is scrollable. Long responses are word-wrapped.
-
-**Verification gate**: Manual testing. Launch TUI, switch to chat view, send a question, verify response appears.
-
----
-
-### Step 4.3: TUI -- Browse View
-
-**What**: Implement the forest browser. Navigate trees and branches, view content.
-
-**Where**:
-- `src/cli/tui/views/browse.ts`
-
-**Interface** (`src/cli/tui/views/browse.ts`):
-
-```typescript
-export interface BrowseView {
-  render(state: TUIState): void;
-    // Renders:
-    //   - Left panel: tree list (expandable to show branches)
-    //   - Right panel: selected branch content (rendered markdown)
-    //   - Status bar: branch metadata (status, tags, created, updated)
-
-  handleNavigation(key: string, state: TUIState): TUIState;
-    // Arrow keys: navigate tree/branch list
-    // Enter: expand tree / select branch
-    // Backspace: collapse / go up
-}
-```
-
-**Behavior**:
-- Trees are listed alphabetically. Expanding a tree shows its branches.
-- Selecting a branch shows its content in the right panel with frontmatter metadata in the status bar.
-- Content panel renders markdown with basic formatting (headers, bold, links highlighted).
-
-**Verification gate**: Manual testing. Launch TUI, create some branches first, switch to browse view, navigate trees and branches.
-
----
-
-### Step 4.4: TUI -- Graph View
-
-**What**: Implement ASCII graph visualization. Show the local neighborhood of a selected branch.
-
-**Where**:
-- `src/cli/tui/views/graph.ts`
-
-**Interface** (`src/cli/tui/views/graph.ts`):
-
-```typescript
-export interface GraphView {
-  render(state: TUIState): void;
-    // Renders:
-    //   - ASCII graph centered on graphRoot node
-    //   - Nodes are branch names
-    //   - Edges are lines/arrows between nodes
-    //   - Current node highlighted
-    //   - Depth control (1-5 hops)
-
-  handleNavigation(key: string, state: TUIState): TUIState;
-    // Arrow keys: navigate between nodes
-    // Enter: recenter graph on selected node
-    // +/-: increase/decrease graph depth
-    // /: search for a node to center on
-}
-```
-
-**Behavior**:
-- Graph is rendered as ASCII art. Nodes are boxes with branch names, edges are lines.
-- Layout algorithm: simple force-directed or tree layout. Root in center, connected nodes around it.
-- Depth is adjustable from 1 to 5. Default: 2.
-- Selecting a node and pressing Enter recenters the graph on that node.
-- If graph is too large for the terminal, the view is scrollable.
-
-**Verification gate**: Manual testing. Create branches with wiki-links, launch TUI, switch to graph view, navigate the graph.
-
----
-
-### Step 4.5: TUI -- Garden View
-
-**What**: Interactive gardening session. Run maintenance, review proposals, approve/reject actions.
-
-**Where**:
-- `src/cli/tui/views/garden.ts`
-
-**Interface** (`src/cli/tui/views/garden.ts`):
-
-```typescript
-export interface GardenView {
-  render(state: TUIState): void;
-    // Renders:
-    //   - Health summary at top
-    //   - Action log (recent auto-executed actions)
-    //   - Pending proposals (confirm-level actions awaiting approval)
-    //   - "Run garden cycle" button
-
-  handleAction(key: string, agent: EuclidAgent, state: TUIState): Promise<TUIState>;
-    // g: trigger garden cycle
-    // Enter on pending action: show detail + approve/reject dialog
-    // y: approve selected pending action
-    // n: reject selected pending action
-    // r: refresh health data
-}
-```
-
-**Behavior**:
-- The garden view is a dashboard. Top section shows HealthReport metrics. Middle shows the action log. Bottom shows pending proposals.
-- Running a garden cycle calls `agent.garden()` and updates the display with the report.
-- Pending actions show type, description, affected paths, and rationale. The user can approve or reject each one.
-- Approved actions are executed immediately and logged. Rejected actions are removed from pending.
-
-**Verification gate**: Manual testing. Create a forest with branches, launch TUI, switch to garden view, run a garden cycle, review and approve/reject proposals.
-
----
-
-### Step 4.6: CLI -- TUI Entry Points
-
-**What**: Wire `memforest` (no args) and `memforest tui` to launch the TUI.
-
-**Where**:
-- `src/cli/index.ts` — Updated
-- `src/cli/commands/tui.ts`
-
-**Interface**:
-
-```
-memforest (no arguments):
-  If stdin is a TTY → launch TUI
-  If stdin is not a TTY → print help (non-interactive context)
-
-memforest tui:
-  Always launch TUI.
-  Options:
-    --view, -v <view> — start on specific view (chat|browse|graph|garden|health)
-  Behavior:
-    1. resolveActiveTenant()
-    2. launchTUI(tenant)
-  Errors:
-    - NoActiveForestError → "No active forest. Run 'memforest use <name>' first."
-    - Not a TTY → "TUI requires an interactive terminal."
-```
-
-**Verification gate**:
-```bash
-bun run build
-node dist/index.js init tui-final-test
-node dist/index.js use tui-final-test
-node dist/index.js upsert "ideas/test" "A test idea for the TUI [[ideas/another]]"
-node dist/index.js upsert "ideas/another" "Another idea linked from test"
-node dist/index.js tui                    # launches TUI
-node dist/index.js tui --view graph       # launches TUI in graph view
-# Ctrl+C to exit
-rm -rf ~/.memforest/forests/tui-final-test
-```
-Expected: TUI launches, all views render, navigation works, chat produces Euclid responses.
+Expected: cross-forest search returns results grouped by forest. Each forest's results are isolated and properly tagged.
 
 ---
 
 ## Appendix A: Dependency Graph
 
 ```
-Phase 0
-  Step 0.1: Project Scaffold
-    └─ Step 0.2: Shared Types & Config
-        ├─ Step 0.3: Forest — Tenant Management
-        │   └─ Step 0.4: Forest — Markdown CRUD
-        │       └─ Step 0.5: Mycelium — Database Setup
-        │           └─ Step 0.6: Mycelium — Indexing
-        │               └─ Step 0.7: Mycelium — Search
-        │                   └─ Step 0.8: CLI — Command Wiring
-        │                       └─ Step 0.9: Integration Tests
+Phase 0 — Local POC
+  Milestone A: Scaffold + Forest
+    A.1 → A.2 → A.3
+  Milestone B: Branches
+    B.1
+  Milestone C: SQLite + FTS
+    C.1 → C.2 → C.3
+  Milestone D: CLI + Tests
+    D.1 → D.2
+  Milestone E: TUI
+    E.1 → E.2, E.3, E.4, E.5 → E.6
 
 Phase 1 (depends on Phase 0)
-  Step 1.1: Scanner
-    └─ Step 1.2: Mapper
-        └─ Step 1.3: Link Resolver
-            └─ Step 1.4: Pipeline Orchestrator
-                └─ Step 1.5: CLI Import Commands
+  1.1 → 1.2 → 1.3 → 1.4
 
 Phase 2 (depends on Phase 1)
-  Step 2.1: Agent Runtime
-    └─ Step 2.2: Autonomy Enforcement
-        └─ Step 2.3: Action Logger
-            └─ Step 2.4: CLI Euclid Commands
+  2.1 → 2.2 → 2.3 → 2.4 → 2.5
 
 Phase 3 (depends on Phase 2)
-  Step 3.1: Template Engine
-    └─ Step 3.2: CLI Install Commands
+  3.1 → 3.2 → 3.3 → 3.4 → 3.5
 
 Phase 4 (depends on Phase 3)
-  Step 4.1: TUI App Shell
-    ├─ Step 4.2: Chat View
-    ├─ Step 4.3: Browse View
-    ├─ Step 4.4: Graph View
-    └─ Step 4.5: Garden View
-        └─ Step 4.6: CLI TUI Entry Points
+  4.1 → 4.2 → 4.3
 ```
 
 ## Appendix B: Package Reference
 
+**v0 dependencies (Phase 0)**:
+
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `better-sqlite3` | ^11.0.0 | SQLite driver for Node.js |
-| `sqlite-vec` | ^0.1.9 | Vector search extension for SQLite |
-| `fastembed` | ^2.1.0 | Local embedding generation (ONNX Runtime, BGE models) |
 | `commander` | ^13.0.0 | CLI framework |
 | `gray-matter` | ^4.0.3 | YAML frontmatter parsing |
 | `smol-toml` | ^1.6.0 | TOML parsing/serialization |
+| `pi-tui` | TBD | Terminal UI framework |
+
+**Phase 1+ dependencies**:
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `sqlite-vec` | ^0.1.9 | Vector search extension for SQLite |
+| `fastembed` | ^2.1.0 | Local embedding generation (ONNX Runtime, BGE models) |
+
+**Dev dependencies**:
+
+| Package | Version | Purpose |
+|---------|---------|---------|
 | `@biomejs/biome` | ^1.9.0 | Linting + formatting |
 | `tsup` | ^8.0.0 | TypeScript bundler |
 | `vitest` | ^3.0.0 | Test framework |
 | `typescript` | ^5.7.0 | Type checking |
+| `@types/better-sqlite3` | ^7.6.0 | Type definitions for better-sqlite3 |
+| `@types/node` | ^22.0.0 | Type definitions for Node.js |
 
 ## Appendix C: Embedding Model Details
 
