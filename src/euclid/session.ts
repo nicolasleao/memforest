@@ -2,8 +2,11 @@ import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
 import { buildFullSystemPrompt } from "./prompts.js";
 import type { EuclidConfig } from "./types.js";
 
+export type EuclidEventListener = (event: unknown) => void;
+
 export interface EuclidSessionHandle {
 	prompt(message: string): Promise<string>;
+	subscribe(listener: EuclidEventListener): () => void;
 	dispose(): Promise<void>;
 }
 
@@ -76,6 +79,9 @@ export async function createEuclidSession(config: EuclidConfig): Promise<EuclidS
 			await session.prompt(message);
 			const afterMessages = session.messages.slice(beforeCount);
 			return extractTextFromMessages(afterMessages);
+		},
+		subscribe(listener: EuclidEventListener): () => void {
+			return session.subscribe(listener as (event: never) => void);
 		},
 		async dispose(): Promise<void> {
 			await session.dispose();
