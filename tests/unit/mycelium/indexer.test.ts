@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -11,12 +12,11 @@ import {
 	resolveEdges,
 } from "@memforest/mycelium";
 import type { Branch, TenantContext } from "@memforest/shared";
-import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 let tempDir: string;
 let tenant: TenantContext;
-let database: Database.Database;
+let database: Database;
 const originalEnv = process.env.MEMFOREST_HOME;
 
 function makeBranch(
@@ -125,7 +125,7 @@ describe("removeBranchIndex", () => {
 		const branchRow = database
 			.prepare("SELECT * FROM branches WHERE relative_path = ?")
 			.get("domains/auth");
-		expect(branchRow).toBeUndefined();
+		expect(branchRow).toBeFalsy();
 
 		const edges = database
 			.prepare("SELECT * FROM edges WHERE source_path = ? OR target_path = ?")

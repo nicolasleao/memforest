@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -12,12 +13,11 @@ import {
 	searchHybrid,
 } from "@memforest/mycelium";
 import type { Branch, TenantContext } from "@memforest/shared";
-import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 let tempDir: string;
 let tenant: TenantContext;
-let database: Database.Database;
+let database: Database;
 const originalEnv = process.env.MEMFOREST_HOME;
 
 function makeBranch(

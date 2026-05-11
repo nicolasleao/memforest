@@ -1,14 +1,14 @@
+import { Database } from "bun:sqlite";
 import type { TenantContext } from "@memforest/shared";
-import Database from "better-sqlite3";
 import { ALL_SCHEMA } from "./schema.js";
 
-export function openDatabase(tenant: TenantContext): Database.Database {
+export function openDatabase(tenant: TenantContext): Database {
 	const database = new Database(tenant.databasePath);
-	database.pragma("journal_mode = WAL");
+	database.exec("PRAGMA journal_mode = WAL");
 	return database;
 }
 
-export function initDatabase(tenant: TenantContext): Database.Database {
+export function initDatabase(tenant: TenantContext): Database {
 	const database = openDatabase(tenant);
 
 	database.transaction(() => {
@@ -20,7 +20,7 @@ export function initDatabase(tenant: TenantContext): Database.Database {
 	return database;
 }
 
-export function closeDatabase(database: Database.Database): void {
+export function closeDatabase(database: Database): void {
 	try {
 		database.close();
 	} catch (_error) {

@@ -1,5 +1,5 @@
+import type { Database } from "bun:sqlite";
 import type { Branch, HybridSearchResult, SearchResult } from "@memforest/shared";
-import type Database from "better-sqlite3";
 
 interface BranchRow {
 	id: number;
@@ -44,7 +44,7 @@ function escapeQuery(query: string): string {
 }
 
 export async function searchFTS(
-	database: Database.Database,
+	database: Database,
 	query: string,
 	limit?: number,
 ): Promise<SearchResult[]> {
@@ -78,11 +78,7 @@ export async function searchFTS(
 	}
 }
 
-export function searchGraph(
-	database: Database.Database,
-	startPath: string,
-	depth?: number,
-): SearchResult[] {
+export function searchGraph(database: Database, startPath: string, depth?: number): SearchResult[] {
 	const maxDepth = Math.min(depth ?? 2, 5);
 
 	const startExists = database
@@ -146,7 +142,7 @@ export function searchGraph(
 }
 
 export async function searchHybrid(
-	database: Database.Database,
+	database: Database,
 	query: string,
 	options?: {
 		limit?: number;

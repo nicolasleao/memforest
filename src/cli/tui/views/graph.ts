@@ -1,5 +1,5 @@
+import type { Database } from "bun:sqlite";
 import { searchGraph } from "@memforest/mycelium";
-import type Database from "better-sqlite3";
 import { ANSI, clearMainArea, writeAt } from "../render.js";
 import type { TUIState } from "../types.js";
 import { setGraphDepth, setGraphRoot } from "../types.js";
@@ -12,7 +12,7 @@ interface GraphNeighborhood {
 }
 
 export function loadGraphNeighborhood(
-	database: Database.Database,
+	database: Database,
 	rootPath: string,
 	depth: number,
 ): GraphNeighborhood {
@@ -48,7 +48,7 @@ export function loadGraphNeighborhood(
 
 export function handleGraphNavigation(
 	key: string,
-	_database: Database.Database,
+	_database: Database,
 	state: TUIState,
 	navigableItems: string[],
 	selectedIndex: number,
@@ -86,7 +86,7 @@ export function renderGraphView(
 	state: TUIState,
 	rows: number,
 	cols: number,
-	database: Database.Database,
+	database: Database,
 	selectedIndex: number,
 ): string[] {
 	const startRow = 3;

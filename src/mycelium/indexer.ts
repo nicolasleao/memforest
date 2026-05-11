@@ -1,8 +1,8 @@
+import type { Database } from "bun:sqlite";
 import type { Branch, TenantContext } from "@memforest/shared";
-import type Database from "better-sqlite3";
 
 export async function indexBranch(
-	database: Database.Database,
+	database: Database,
 	_tenant: TenantContext,
 	branch: Branch,
 ): Promise<void> {
@@ -70,10 +70,7 @@ export async function indexBranch(
 	})();
 }
 
-export async function removeBranchIndex(
-	database: Database.Database,
-	relativePath: string,
-): Promise<void> {
+export async function removeBranchIndex(database: Database, relativePath: string): Promise<void> {
 	const existing = database
 		.prepare("SELECT id FROM branches WHERE relative_path = ?")
 		.get(relativePath) as { id: number } | undefined;
@@ -90,7 +87,7 @@ export async function removeBranchIndex(
 }
 
 export async function resolveEdges(
-	database: Database.Database,
+	database: Database,
 ): Promise<{ resolved: number; broken: number }> {
 	const unresolvedTargets = database
 		.prepare("SELECT DISTINCT target_path FROM edges WHERE target_resolved = 0")
@@ -127,7 +124,7 @@ export async function resolveEdges(
 }
 
 export async function reindexForest(
-	database: Database.Database,
+	database: Database,
 	tenant: TenantContext,
 	branches: Branch[],
 ): Promise<{ indexed: number; failed: number }> {

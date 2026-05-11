@@ -1,12 +1,9 @@
+import type { Database } from "bun:sqlite";
 import { listBranches } from "@memforest/forest";
 import type { HealthReport, TenantContext } from "@memforest/shared";
-import type Database from "better-sqlite3";
 import { ANSI, clearMainArea, writeAt } from "../render.js";
 
-export function computeHealthReport(
-	database: Database.Database,
-	tenant: TenantContext,
-): HealthReport {
+export function computeHealthReport(database: Database, tenant: TenantContext): HealthReport {
 	const branches = listBranches(tenant);
 
 	const indexedRow = database.prepare("SELECT COUNT(*) as count FROM branches").get() as {

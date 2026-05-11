@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -15,7 +16,6 @@ import {
 import { closeDatabase, indexBranch, initDatabase, searchFTS } from "@memforest/mycelium";
 import { BranchNotFoundError, loadGlobalConfig } from "@memforest/shared";
 import type { TenantContext } from "@memforest/shared";
-import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 let tempDir: string;
@@ -64,7 +64,7 @@ describe("forest lifecycle", () => {
 
 describe("branch CRUD", () => {
 	let tenant: TenantContext;
-	let db: Database.Database;
+	let db: Database;
 
 	beforeEach(() => {
 		tenant = createForest("branch-crud", tempDir);

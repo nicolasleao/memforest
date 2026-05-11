@@ -1,12 +1,12 @@
+import type { Database } from "bun:sqlite";
 import { searchHybrid } from "@memforest/mycelium";
-import type Database from "better-sqlite3";
 import { ANSI, clearMainArea, writeAt } from "../render.js";
 import type { TUIState } from "../types.js";
 import { appendChatMessage } from "../types.js";
 
 export async function handleChatInput(
 	input: string,
-	database: Database.Database,
+	database: Database,
 	state: TUIState,
 ): Promise<TUIState> {
 	const trimmed = input.trim();

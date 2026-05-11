@@ -9,22 +9,20 @@
 	"scripts": {
 		"build": "tsup",
 		"dev": "tsup --watch",
-		"test": "vitest run",
-		"test:watch": "vitest",
+		"test": "bun --bun vitest run",
+		"test:watch": "bun --bun vitest",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@oh-my-pi/pi-coding-agent": "^14.3.0",
-		"better-sqlite3": "^11.0.0",
 		"commander": "^13.0.0",
 		"gray-matter": "^4.0.3",
 		"smol-toml": "^1.6.0"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.0",
-		"@types/better-sqlite3": "^7.6.0",
 		"@types/node": "^22.0.0",
 		"tsup": "^8.0.0",
 		"typescript": "^5.7.0",
