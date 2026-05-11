@@ -1,8 +1,10 @@
 import { Command } from "commander";
 import { registerAsk } from "./commands/ask.js";
+import { registerChat } from "./commands/chat.js";
 import { registerHealth } from "./commands/health.js";
 import { registerInit } from "./commands/init.js";
 import { registerList } from "./commands/list.js";
+import { registerMaintain } from "./commands/maintain.js";
 import { registerReindex } from "./commands/reindex.js";
 import { registerSearch } from "./commands/search.js";
 import { registerTui } from "./commands/tui.js";
@@ -23,6 +25,8 @@ export function createProgram(): Command {
 	registerAsk(program);
 	registerHealth(program);
 	registerReindex(program);
+	registerChat(program);
+	registerMaintain(program);
 	registerTui(program);
 
 	return program;

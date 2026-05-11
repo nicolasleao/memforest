@@ -16,6 +16,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@oh-my-pi/pi-coding-agent": "^14.3.0",
 		"better-sqlite3": "^11.0.0",
 		"commander": "^13.0.0",
 		"gray-matter": "^4.0.3",
