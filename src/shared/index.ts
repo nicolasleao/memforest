@@ -28,6 +28,8 @@ export {
 	BranchAlreadyExistsError,
 	ConfigError,
 	DatabaseError,
+	EuclidError,
+	MissingApiKeyError,
 } from "./errors.js";
 
 export { createLogger } from "./logger.js";

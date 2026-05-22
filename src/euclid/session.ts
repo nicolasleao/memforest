@@ -5,7 +5,7 @@ import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 import { getModel } from "@earendil-works/pi-ai";
 import type { Message } from "@earendil-works/pi-ai";
 import { closeDatabase, initDatabase } from "@memforest/mycelium";
-import { getRootPath } from "@memforest/shared";
+import { MissingApiKeyError, getRootPath } from "@memforest/shared";
 import dotenv from "dotenv";
 import { buildFullSystemPrompt } from "./prompts.js";
 import { createEuclidTools } from "./tools.js";
@@ -114,6 +114,16 @@ export async function createEuclidSession(config: EuclidConfig): Promise<EuclidS
 				return getModel(parsed.provider as "anthropic", parsed.id as "claude-sonnet-4-6");
 			})()
 		: getModel("anthropic", "claude-sonnet-4-6");
+
+	const provider = model.provider;
+	const resolvedKey = getApiKey(provider);
+	if (!resolvedKey) {
+		closeDatabase(db);
+		const envVars = API_KEY_ENV[provider] ?? [
+			`${provider.toUpperCase().replace(/-/g, "_")}_API_KEY`,
+		];
+		throw new MissingApiKeyError(provider, envVars);
+	}
 
 	const agent = new Agent({
 		initialState: {

@@ -49,3 +49,20 @@ export class DatabaseError extends MemforestError {
 		super(message, "DATABASE_ERROR");
 	}
 }
+
+export class EuclidError extends MemforestError {
+	constructor(message: string, code = "EUCLID_ERROR") {
+		super(message, code);
+	}
+}
+
+export class MissingApiKeyError extends EuclidError {
+	constructor(provider: string, envVars: string[]) {
+		const varList = envVars.join(" or ");
+		super(
+			`No API key found for provider "${provider}". ` +
+				`Set ${varList} in ~/.memforest/.env or your environment.`,
+			"MISSING_API_KEY",
+		);
+	}
+}
