@@ -51,6 +51,7 @@ function makeMockAgent() {
 		abort: vi.fn(),
 		state: {
 			messages: [] as unknown[],
+			errorMessage: undefined as string | undefined,
 		},
 	};
 }
@@ -157,6 +158,35 @@ describe("EuclidSessionHandle", () => {
 		const unsub = handle.subscribe(listener);
 		expect(mock.subscribe).toHaveBeenCalledTimes(1);
 		expect(typeof unsub).toBe("function");
+	});
+
+	it("prompt() throws EuclidError when agent.state.errorMessage is set", async () => {
+		const mock = makeMockAgent();
+		mock.prompt.mockImplementation(async () => {
+			mock.state.errorMessage = "authentication_error: invalid api key";
+			mock.state.messages.push({
+				role: "assistant",
+				content: [{ type: "text", text: "" }],
+			});
+		});
+		setupAgentMock(mock);
+
+		const handle = await createEuclidSession({ tenant: mockTenant, mode: "chat" });
+		await expect(handle.prompt("hello")).rejects.toThrow("authentication_error");
+	});
+
+	it("prompt() throws EuclidError on empty response", async () => {
+		const mock = makeMockAgent();
+		mock.prompt.mockImplementation(async () => {
+			mock.state.messages.push({
+				role: "assistant",
+				content: [],
+			});
+		});
+		setupAgentMock(mock);
+
+		const handle = await createEuclidSession({ tenant: mockTenant, mode: "chat" });
+		await expect(handle.prompt("hello")).rejects.toThrow("empty response");
 	});
 
 	it("dispose() calls closeDatabase", async () => {

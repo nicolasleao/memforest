@@ -5,7 +5,7 @@ import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 import { getModel } from "@earendil-works/pi-ai";
 import type { Message } from "@earendil-works/pi-ai";
 import { closeDatabase, initDatabase } from "@memforest/mycelium";
-import { MissingApiKeyError, getRootPath } from "@memforest/shared";
+import { EuclidError, MissingApiKeyError, getRootPath } from "@memforest/shared";
 import dotenv from "dotenv";
 import { buildFullSystemPrompt } from "./prompts.js";
 import { createEuclidTools } from "./tools.js";
@@ -139,7 +139,17 @@ export async function createEuclidSession(config: EuclidConfig): Promise<EuclidS
 	return {
 		async prompt(message: string): Promise<string> {
 			await agent.prompt(message);
-			return extractTextFromMessages(agent.state.messages);
+			if (agent.state.errorMessage) {
+				throw new EuclidError(agent.state.errorMessage);
+			}
+			const text = extractTextFromMessages(agent.state.messages);
+			if (!text.trim()) {
+				throw new EuclidError(
+					"Euclid returned an empty response. This usually means the API call failed silently. " +
+						"Check your API key in ~/.memforest/.env and verify your account has available credits.",
+				);
+			}
+			return text;
 		},
 		subscribe(listener: EuclidEventListener): () => void {
 			return agent.subscribe((event: AgentEvent) => {
