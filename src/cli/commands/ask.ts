@@ -1,49 +1,62 @@
-import { closeDatabase, openDatabase, searchHybrid } from "@memforest/mycelium";
+import { createEuclidSession } from "@memforest/euclid";
 import { MemforestError, resolveActiveTenant } from "@memforest/shared";
+import chalk from "chalk";
 import type { Command } from "commander";
+import { printBanner } from "../banner.js";
+import { createSpinner, getToolStart, renderMarkdown } from "../render.js";
 
 export function registerAsk(program: Command): void {
 	program
 		.command("ask")
-		.description("Ask a question against the active forest")
+		.description("Ask Euclid a question about your forest")
 		.argument("<question>", "Question to ask")
-		.option("--json", "Output as JSON")
-		.action(async (question: string, opts: { json?: boolean }) => {
+		.option("--model <model>", "Model to use (e.g., claude-sonnet-4-6, openai/gpt-4o)")
+		.action(async (question: string, opts: { model?: string }) => {
 			try {
 				const tenant = resolveActiveTenant();
-				const db = openDatabase(tenant);
+				const width = process.stdout.columns || 80;
+
+				printBanner(tenant.name);
+				process.stderr.write(`${chalk.dim("Starting Euclid session...")}\n`);
+
+				const euclidSession = await createEuclidSession({
+					tenant,
+					mode: "chat",
+					model: opts.model,
+				});
+
+				const spinner = createSpinner("Thinking...");
+				spinner.start();
+
+				const unsubscribe = euclidSession.subscribe((event: unknown) => {
+					const tool = getToolStart(event);
+					if (tool) {
+						spinner.stop();
+						process.stderr.write(`  ${chalk.dim(`⚙ ${tool.display}`)}\n`);
+						spinner.start();
+					}
+				});
 
 				try {
-					const hybrid = await searchHybrid(db, question, { limit: 5 });
-					const results = hybrid.results;
+					const response = await euclidSession.prompt(question);
+					unsubscribe();
+					spinner.stop();
 
-					if (opts.json) {
-						process.stdout.write(`${JSON.stringify(hybrid, null, 2)}\n`);
-						return;
+					if (response?.trim()) {
+						const rendered = renderMarkdown(response, width - 2);
+						process.stdout.write(`\n${rendered}\n\n`);
 					}
-
-					if (results.length === 0) {
-						process.stderr.write(`No results found for '${question}'\n`);
-						process.stderr.write("(Full synthesis available in a future version)\n");
-						return;
-					}
-
-					process.stdout.write(`Top results for: ${question}\n\n`);
-
-					for (const result of results) {
-						const snippet =
-							result.branch.content.length > 200
-								? `${result.branch.content.slice(0, 200)}...`
-								: result.branch.content;
-						process.stdout.write(
-							`--- ${result.branch.relativePath} (score: ${result.score.toFixed(2)}, via: ${result.mode}) ---\n`,
-						);
-						process.stdout.write(`${snippet.trim()}\n\n`);
-					}
-
-					process.stdout.write("(Full synthesis available in a future version)\n");
+				} catch (error) {
+					unsubscribe();
+					spinner.stop();
+					throw error;
 				} finally {
-					closeDatabase(db);
+					const forceExit = setTimeout(() => process.exit(0), 1500);
+					try {
+						await euclidSession.dispose();
+					} finally {
+						clearTimeout(forceExit);
+					}
 				}
 			} catch (error) {
 				if (error instanceof MemforestError) {

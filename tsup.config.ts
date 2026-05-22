@@ -11,5 +11,5 @@ export default defineConfig({
 	banner: {
 		js: "#!/usr/bin/env bun",
 	},
-	external: [/^@oh-my-pi\//, "bun:sqlite"],
+	external: [/^@oh-my-pi\//, /^@earendil-works\//, "bun:sqlite"],
 });

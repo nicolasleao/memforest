@@ -16,10 +16,14 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@oh-my-pi/pi-coding-agent": "^14.3.0",
+		"@earendil-works/pi-agent-core": "^0.75.4",
+		"@earendil-works/pi-ai": "^0.75.4",
+		"@oh-my-pi/pi-tui": "^14.9.0",
 		"commander": "^13.0.0",
+		"dotenv": "^17.4.2",
 		"gray-matter": "^4.0.3",
-		"smol-toml": "^1.6.0"
+		"smol-toml": "^1.6.0",
+		"typebox": "^1.1.0"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.0",
