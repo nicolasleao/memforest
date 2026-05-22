@@ -1,5 +1,5 @@
 import { createEuclidSession } from "@memforest/euclid";
-import { MemforestError, resolveActiveTenant } from "@memforest/shared";
+import { resolveActiveTenant } from "@memforest/shared";
 import chalk from "chalk";
 import type { Command } from "commander";
 import { printBanner } from "../banner.js";
@@ -59,11 +59,10 @@ export function registerAsk(program: Command): void {
 					}
 				}
 			} catch (error) {
-				if (error instanceof MemforestError) {
-					process.stderr.write(`${error.message}\n`);
-					process.exit(1);
-				}
-				throw error;
+				process.stderr.write(
+					chalk.red(`\nError: ${error instanceof Error ? error.message : String(error)}\n`),
+				);
+				process.exit(1);
 			}
 		});
 }
