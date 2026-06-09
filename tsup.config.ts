@@ -9,7 +9,7 @@ export default defineConfig({
 	sourcemap: true,
 	dts: true,
 	banner: {
-		js: "#!/usr/bin/env bun",
+		js: "#!/usr/bin/env node",
 	},
-	external: [/^@oh-my-pi\//, /^@earendil-works\//, "bun:sqlite"],
+	external: [/^@oh-my-pi\//, /^@earendil-works\//, "better-sqlite3"],
 });

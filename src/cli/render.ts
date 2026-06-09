@@ -1,4 +1,4 @@
-import { Markdown, type MarkdownTheme } from "@oh-my-pi/pi-tui";
+import type { MarkdownTheme } from "@oh-my-pi/pi-tui/components/markdown";
 import chalk from "chalk";
 
 // ---------------------------------------------------------------------------
@@ -67,8 +67,9 @@ export const theme: MarkdownTheme = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-export function renderMarkdown(text: string, width: number): string {
+export async function renderMarkdown(text: string, width: number): Promise<string> {
 	if (!text.trim()) return "";
+	const { Markdown } = await import("@oh-my-pi/pi-tui/components/markdown");
 	const md = new Markdown(text, 1, 0, theme);
 	const lines = md.render(width);
 	return lines.join("\n");

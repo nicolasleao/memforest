@@ -71,7 +71,7 @@ export function registerChat(program: Command): void {
 						spinner.stop();
 
 						if (fullResponse?.trim()) {
-							const rendered = renderMarkdown(fullResponse, width - 2);
+							const rendered = await renderMarkdown(fullResponse, width - 2);
 							process.stdout.write(`\n${rendered}\n\n`);
 						}
 					} catch (error) {

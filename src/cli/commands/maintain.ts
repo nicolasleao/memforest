@@ -42,7 +42,7 @@ export function registerMaintain(program: Command): void {
 					spinner.stop();
 
 					if (report?.trim()) {
-						const rendered = renderMarkdown(report, width - 2);
+						const rendered = await renderMarkdown(report, width - 2);
 						process.stdout.write(`\n${rendered}\n\n`);
 					}
 				} catch (error) {

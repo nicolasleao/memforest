@@ -43,7 +43,7 @@ export function registerAsk(program: Command): void {
 					spinner.stop();
 
 					if (response?.trim()) {
-						const rendered = renderMarkdown(response, width - 2);
+						const rendered = await renderMarkdown(response, width - 2);
 						process.stdout.write(`\n${rendered}\n\n`);
 					}
 				} catch (error) {
