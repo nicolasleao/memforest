@@ -11,5 +11,5 @@ export default defineConfig({
 	banner: {
 		js: "#!/usr/bin/env node",
 	},
-	external: [/^@oh-my-pi\//, /^@earendil-works\//, "better-sqlite3"],
+	external: [/^@earendil-works\//, "better-sqlite3"],
 });

@@ -1079,12 +1079,12 @@ Staleness detection runs during `memforest garden` and `memforest health`. Notes
 
 ### 6.1 Wiring to pi-coding-agent
 
-Euclid is a pi-coding-agent session with a custom system prompt, custom tools, and domain-specific capabilities. Integration uses the `createAgentSession` SDK from `@oh-my-pi/pi-coding-agent`.
+Euclid is a pi-coding-agent session with a custom system prompt, custom tools, and domain-specific capabilities. Integration uses the `Agent` runtime from `@earendil-works/pi-agent-core` (the official pi-core suite — no forks).
 
 ```typescript
 // src/euclid/session.ts
 
-import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
+import { Agent } from "@earendil-works/pi-agent-core";
 
 async function createEuclidSession(tenant: TenantContext, options?: EuclidOptions): Promise<EuclidSession> {
   const db = openDatabase(tenant);
@@ -1969,9 +1969,9 @@ No domain logic changes required. The skill content is the same; only the output
 | `commander` | ^12 | CLI framework |
 | `better-sqlite3` | ^12 | SQLite driver (synchronous API, WAL mode) |
 | `sqlite-vec` | ^0.1 | Vector similarity search extension |
-| `@oh-my-pi/pi-coding-agent` | ^14 | Agent runtime (session, tools, capabilities) |
-| `@oh-my-pi/pi-tui` | ^14 | Terminal UI (interactive mode) |
-| `@oh-my-pi/pi-ai` | ^14 | LLM abstraction (model registry, completion) |
+| `@earendil-works/pi-agent-core` | ^0.75 | Agent runtime (session, tools, capabilities) |
+| `@earendil-works/pi-tui` | ^0.75 | Terminal UI (interactive mode) |
+| `@earendil-works/pi-ai` | ^0.75 | LLM abstraction (model registry, completion) |
 | `nanoid` | ^5 | ID generation (br_, ch_ prefixes) |
 | `gray-matter` | ^4 | YAML frontmatter parsing |
 | `chalk` | ^5 | Terminal colors |

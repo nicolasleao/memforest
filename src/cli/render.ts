@@ -1,4 +1,4 @@
-import type { MarkdownTheme } from "@oh-my-pi/pi-tui/components/markdown";
+import { Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
 import chalk from "chalk";
 
 // ---------------------------------------------------------------------------
@@ -20,47 +20,6 @@ export const theme: MarkdownTheme = {
 	italic: (t) => chalk.italic(t),
 	strikethrough: (t) => chalk.strikethrough(t),
 	underline: (t) => chalk.underline(t),
-	symbols: {
-		cursor: "▌",
-		inputCursor: "▌",
-		boxRound: {
-			topLeft: "╭",
-			topRight: "╮",
-			bottomLeft: "╰",
-			bottomRight: "╯",
-			horizontal: "─",
-			vertical: "│",
-		},
-		boxSharp: {
-			topLeft: "┌",
-			topRight: "┐",
-			bottomLeft: "└",
-			bottomRight: "┘",
-			horizontal: "─",
-			vertical: "│",
-			teeDown: "┬",
-			teeUp: "┴",
-			teeLeft: "┤",
-			teeRight: "├",
-			cross: "┼",
-		},
-		table: {
-			topLeft: "┌",
-			topRight: "┐",
-			bottomLeft: "└",
-			bottomRight: "┘",
-			horizontal: "─",
-			vertical: "│",
-			teeDown: "┬",
-			teeUp: "┴",
-			teeLeft: "┤",
-			teeRight: "├",
-			cross: "┼",
-		},
-		quoteBorder: "│",
-		hrChar: "─",
-		spinnerFrames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
-	},
 };
 
 // ---------------------------------------------------------------------------
@@ -69,7 +28,6 @@ export const theme: MarkdownTheme = {
 
 export async function renderMarkdown(text: string, width: number): Promise<string> {
 	if (!text.trim()) return "";
-	const { Markdown } = await import("@oh-my-pi/pi-tui/components/markdown");
 	const md = new Markdown(text, 1, 0, theme);
 	const lines = md.render(width);
 	return lines.join("\n");
