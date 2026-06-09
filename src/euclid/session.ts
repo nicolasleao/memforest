@@ -41,23 +41,12 @@ function parseModelString(modelStr: string): { provider: string; id: string } {
 function extractTextFromMessages(messages: AgentMessage[]): string {
 	const parts: string[] = [];
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i] as Record<string, unknown>;
+		const msg = messages[i];
 		if (msg.role !== "assistant") continue;
 
-		const content = msg.content;
-		if (typeof content === "string") {
-			parts.push(content);
-		} else if (Array.isArray(content)) {
-			for (const block of content) {
-				if (
-					typeof block === "object" &&
-					block !== null &&
-					(block as Record<string, unknown>).type === "text" &&
-					typeof (block as Record<string, unknown>).text === "string"
-				) {
-					parts.push((block as Record<string, unknown>).text as string);
-				}
-			}
+		// AssistantMessage.content is always an array of content blocks.
+		for (const block of msg.content) {
+			if (block.type === "text") parts.push(block.text);
 		}
 		break;
 	}
@@ -94,13 +83,11 @@ function getApiKey(provider: string): string | undefined {
 }
 
 function convertToLlm(messages: AgentMessage[]): Message[] {
+	// Keep LLM messages; drop agent-only messages (e.g. compactionSummary).
+	// Note: the tool-result role is "toolResult" (camelCase) in pi-ai.
 	return messages.filter(
-		(m) =>
-			"role" in m &&
-			((m as Message).role === "user" ||
-				(m as Message).role === "assistant" ||
-				(m as Message).role === "tool_result"),
-	) as Message[];
+		(m): m is Message => m.role === "user" || m.role === "assistant" || m.role === "toolResult",
+	);
 }
 
 export async function createEuclidSession(config: EuclidConfig): Promise<EuclidSessionHandle> {
