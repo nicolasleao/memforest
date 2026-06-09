@@ -10,11 +10,6 @@ vi.mock("@earendil-works/pi-ai", () => ({
 	getModel: vi.fn(() => ({ provider: "anthropic", id: "claude-sonnet-4-6" })),
 }));
 
-// Mock bun:sqlite to prevent resolution errors from transitive imports
-vi.mock("bun:sqlite", () => ({
-	Database: vi.fn(),
-}));
-
 vi.mock("@memforest/mycelium", () => ({
 	initDatabase: vi.fn(() => ({ close: vi.fn() })),
 	closeDatabase: vi.fn(),

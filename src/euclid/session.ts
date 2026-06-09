@@ -1,10 +1,10 @@
-import type { Database } from "bun:sqlite";
 import * as path from "node:path";
 import { Agent } from "@earendil-works/pi-agent-core";
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 import { getModel } from "@earendil-works/pi-ai";
 import type { Message } from "@earendil-works/pi-ai";
 import { closeDatabase, initDatabase } from "@memforest/mycelium";
+import type { Db } from "@memforest/mycelium";
 import { EuclidError, MissingApiKeyError, getRootPath } from "@memforest/shared";
 import dotenv from "dotenv";
 import { buildFullSystemPrompt } from "./prompts.js";
@@ -104,7 +104,7 @@ function convertToLlm(messages: AgentMessage[]): Message[] {
 }
 
 export async function createEuclidSession(config: EuclidConfig): Promise<EuclidSessionHandle> {
-	const db: Database = initDatabase(config.tenant);
+	const db: Db = initDatabase(config.tenant);
 	const tools = createEuclidTools(config.tenant, db);
 	const systemPrompt = buildFullSystemPrompt(config.tenant.name, config.tenant.forestPath);
 

@@ -1,4 +1,3 @@
-import type { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -11,12 +10,13 @@ import {
 	searchFTS,
 	searchHybrid,
 } from "@memforest/mycelium";
+import type { Db } from "@memforest/mycelium";
 import type { TenantContext } from "@memforest/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 let tempDir: string;
 let tenant: TenantContext;
-let db: Database;
+let db: Db;
 const originalEnv = process.env.MEMFOREST_HOME;
 
 beforeEach(async () => {

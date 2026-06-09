@@ -1,4 +1,3 @@
-import type { Database } from "bun:sqlite";
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import {
 	branchExists,
@@ -19,6 +18,7 @@ import {
 } from "@memforest/mycelium";
 import type { TenantContext } from "@memforest/shared";
 import { Type } from "typebox";
+import type { Db } from "../mycelium/database.js";
 
 function textResult(text: string): AgentToolResult<Record<string, never>> {
 	return { content: [{ type: "text", text }], details: {} };
@@ -61,7 +61,7 @@ const ListParams = Type.Object({
 
 const EmptyParams = Type.Object({});
 
-export function createEuclidTools(tenant: TenantContext, db: Database): AgentTool[] {
+export function createEuclidTools(tenant: TenantContext, db: Db): AgentTool[] {
 	const forestSearch: AgentTool<typeof SearchParams> = {
 		name: "forest_search",
 		label: "Search Forest",
