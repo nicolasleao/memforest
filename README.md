@@ -52,11 +52,11 @@ Markdown files are the storage format — portable, inspectable, git-friendly. S
 # Clone and build from source
 git clone https://github.com/nicolasleao/memforest.git
 cd memforest
-bun install
-bun run build
+npm install
+npm run build
 
 # Optional: link globally so `memforest` works anywhere
-bun link
+npm link
 
 # Create your first forest
 memforest init personal
@@ -75,7 +75,7 @@ memforest health
 memforest tui
 ```
 
-**Requirements:** [Bun](https://bun.sh) >= 1.0
+**Requirements:** [Node.js](https://nodejs.org) >= 20
 
 ## CLI Reference
 

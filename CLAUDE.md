@@ -14,7 +14,7 @@ Full vision: `BRIEF.md`. Architecture rules: `CONSTITUTION.md`.
 - **DB (v0)**: better-sqlite3 + sqlite-vec (one SQLite DB per tenant)
 - **Embeddings**: fastembed BGESmallENV15 (local, private, no API dependency)
 - **FTS**: SQLite FTS5
-- **Build**: tsup, bun compile
+- **Build**: tsup
 - **Test**: vitest
 - **Lint**: biome
 
@@ -36,11 +36,11 @@ Each domain owns its types, services, and repositories. No cross-domain imports 
 ## Development Commands
 
 ```bash
-bun install          # install deps
-bun run build        # compile via tsup
-bun run test         # vitest
-bun run lint         # biome check
-bun run dev          # watch mode
+npm install          # install deps
+npm run build        # compile via tsup
+npm test             # vitest
+npm run lint         # biome check
+npm run dev          # watch mode
 ```
 
 ## Architecture Rules
@@ -81,7 +81,7 @@ bun run dev          # watch mode
 1. Read `BRIEF.md` for vision and scope
 2. Read `CONSTITUTION.md` for rules
 3. Check existing domain boundaries before adding code
-4. Run `bun run test && bun run lint` before committing
+4. Run `npm test && npm run lint` before committing
 5. Ground in context vault: `qmd search "<topic>" -c context` (until memforest replaces qmd)
 
 ## Commit Style
