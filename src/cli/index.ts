@@ -14,7 +14,11 @@ export function createProgram(): Command {
 	const program = new Command()
 		.name("memforest")
 		.version("0.1.0")
-		.description("Multi-tenant, agent-native memory substrate");
+		.description("Multi-tenant, agent-native memory substrate")
+		.option(
+			"-f, --forest <name>",
+			"Operate on this forest for this invocation (overrides the active forest)",
+		);
 
 	registerInit(program);
 	registerList(program);

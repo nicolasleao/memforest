@@ -31,38 +31,47 @@ export function registerUpsert(program: Command): void {
 			[] as string[],
 		)
 		.option("-s, --status <status>", "Branch status (seed|growing|mature|stale|archived)")
-		.action(async (name: string, content: string, opts: { tag: string[]; status?: string }) => {
-			try {
-				const tenant = resolveActiveTenant();
-				const { treeName, branchName } = parseBranchPath(name);
-				const db = openDatabase(tenant);
-
+		.action(
+			async (
+				name: string,
+				content: string,
+				opts: { tag: string[]; status?: string },
+				command: Command,
+			) => {
 				try {
-					const frontmatterOpts: Partial<BranchFrontmatter> = {};
-					if (opts.tag.length > 0) {
-						frontmatterOpts.tags = opts.tag;
-					}
-					if (opts.status) {
-						frontmatterOpts.status = opts.status as BranchFrontmatter["status"];
-					}
+					const tenant = resolveActiveTenant(
+						command.optsWithGlobals().forest as string | undefined,
+					);
+					const { treeName, branchName } = parseBranchPath(name);
+					const db = openDatabase(tenant);
 
-					const isUpdate = branchExists(tenant, treeName, branchName);
-					const branch = isUpdate
-						? updateBranch(tenant, treeName, branchName, content, frontmatterOpts)
-						: createBranch(tenant, treeName, branchName, content, frontmatterOpts);
+					try {
+						const frontmatterOpts: Partial<BranchFrontmatter> = {};
+						if (opts.tag.length > 0) {
+							frontmatterOpts.tags = opts.tag;
+						}
+						if (opts.status) {
+							frontmatterOpts.status = opts.status as BranchFrontmatter["status"];
+						}
 
-					await indexBranch(db, tenant, branch);
-					await resolveEdges(db);
-					process.stderr.write(`${isUpdate ? "Updated" : "Created"} ${treeName}/${branchName}\n`);
-				} finally {
-					closeDatabase(db);
+						const isUpdate = branchExists(tenant, treeName, branchName);
+						const branch = isUpdate
+							? updateBranch(tenant, treeName, branchName, content, frontmatterOpts)
+							: createBranch(tenant, treeName, branchName, content, frontmatterOpts);
+
+						await indexBranch(db, tenant, branch);
+						await resolveEdges(db);
+						process.stderr.write(`${isUpdate ? "Updated" : "Created"} ${treeName}/${branchName}\n`);
+					} finally {
+						closeDatabase(db);
+					}
+				} catch (error) {
+					if (error instanceof MemforestError) {
+						process.stderr.write(`${error.message}\n`);
+						process.exit(1);
+					}
+					throw error;
 				}
-			} catch (error) {
-				if (error instanceof MemforestError) {
-					process.stderr.write(`${error.message}\n`);
-					process.exit(1);
-				}
-				throw error;
-			}
-		});
+			},
+		);
 }

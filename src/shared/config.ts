@@ -92,7 +92,30 @@ export function saveForestConfig(forestPath: string, config: ForestConfig): void
 	fs.writeFileSync(configPath, TOML.stringify(tomlData), "utf-8");
 }
 
-export function resolveActiveTenant(): TenantContext {
+// Mirrors createForest's forest-name rule (src/forest/tenant.ts) — shared cannot
+// import the forest package, so the regex is duplicated here. Also blocks path
+// traversal through the path.join below.
+const FOREST_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
+
+export function resolveActiveTenant(forestOverride?: string): TenantContext {
+	const override = forestOverride ?? process.env.MEMFOREST_FOREST;
+	if (override !== undefined && override.length > 0) {
+		if (!FOREST_NAME_REGEX.test(override)) {
+			throw new ForestNotFoundError(override);
+		}
+		const forestPath = path.join(getRootPath(), "forests", override);
+		if (!fs.existsSync(forestPath)) {
+			throw new ForestNotFoundError(override);
+		}
+		return {
+			name: override,
+			forestPath,
+			treesPath: path.join(forestPath, "trees"),
+			databasePath: path.join(forestPath, "mycelium.db"),
+			configPath: path.join(forestPath, "forest.toml"),
+		};
+	}
+
 	const globalConfig = loadGlobalConfig();
 
 	if (globalConfig.activeForest === null) {

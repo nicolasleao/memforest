@@ -17,59 +17,67 @@ export function registerSearch(program: Command): void {
 		.option("-m, --mode <mode>", "Search mode: fts|graph|hybrid", "hybrid")
 		.option("-l, --limit <n>", "Max results", "10")
 		.option("--json", "Output as JSON")
-		.action(async (query: string, opts: { mode: string; limit: string; json?: boolean }) => {
-			try {
-				const tenant = resolveActiveTenant();
-				const db = openDatabase(tenant);
-				const limit = Number.parseInt(opts.limit, 10);
-
+		.action(
+			async (
+				query: string,
+				opts: { mode: string; limit: string; json?: boolean },
+				command: Command,
+			) => {
 				try {
-					let results: SearchResult[];
+					const tenant = resolveActiveTenant(
+						command.optsWithGlobals().forest as string | undefined,
+					);
+					const db = openDatabase(tenant);
+					const limit = Number.parseInt(opts.limit, 10);
 
-					switch (opts.mode) {
-						case "fts":
-							results = await searchFTS(db, query, limit);
-							break;
-						case "graph":
-							results = searchGraph(db, query, limit);
-							break;
-						case "hybrid": {
-							const hybrid = await searchHybrid(db, query, { limit });
-							results = hybrid.results;
-							break;
+					try {
+						let results: SearchResult[];
+
+						switch (opts.mode) {
+							case "fts":
+								results = await searchFTS(db, query, limit);
+								break;
+							case "graph":
+								results = searchGraph(db, query, limit);
+								break;
+							case "hybrid": {
+								const hybrid = await searchHybrid(db, query, { limit });
+								results = hybrid.results;
+								break;
+							}
+							default:
+								process.stderr.write(
+									`Unknown search mode '${opts.mode}'. Use fts, graph, or hybrid.\n`,
+								);
+								process.exit(1);
+								return;
 						}
-						default:
-							process.stderr.write(
-								`Unknown search mode '${opts.mode}'. Use fts, graph, or hybrid.\n`,
-							);
-							process.exit(1);
+
+						if (results.length === 0) {
+							process.stderr.write(`No results found for '${query}'\n`);
 							return;
-					}
-
-					if (results.length === 0) {
-						process.stderr.write(`No results found for '${query}'\n`);
-						return;
-					}
-
-					if (opts.json) {
-						process.stdout.write(`${JSON.stringify(results, null, 2)}\n`);
-					} else {
-						const header = `${"SCORE".padEnd(8)}${"MODE".padEnd(8)}${"PATH".padEnd(30)}TITLE`;
-						process.stdout.write(`${header}\n`);
-						for (const result of results) {
-							const line = `${result.score.toFixed(2).padEnd(8)}${result.mode.padEnd(8)}${result.branch.relativePath.padEnd(30)}${result.branch.frontmatter.title}`;
-							process.stdout.write(`${line}\n`);
 						}
+
+						if (opts.json) {
+							process.stdout.write(`${JSON.stringify(results, null, 2)}\n`);
+						} else {
+							const header = `${"SCORE".padEnd(8)}${"MODE".padEnd(8)}${"PATH".padEnd(30)}TITLE`;
+							process.stdout.write(`${header}\n`);
+							for (const result of results) {
+								const line = `${result.score.toFixed(2).padEnd(8)}${result.mode.padEnd(8)}${result.branch.relativePath.padEnd(30)}${result.branch.frontmatter.title}`;
+								process.stdout.write(`${line}\n`);
+							}
+						}
+					} finally {
+						closeDatabase(db);
 					}
-				} finally {
-					closeDatabase(db);
+				} catch (error) {
+					if (error instanceof MemforestError) {
+						process.stderr.write(`${error.message}\n`);
+						process.exit(1);
+					}
+					throw error;
 				}
-			} catch (error) {
-				if (error instanceof MemforestError) {
-					process.stderr.write(`${error.message}\n`);
-					process.exit(1);
-				}
-				throw error;
-			}
-		});
+			},
+		);
 }

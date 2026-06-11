@@ -9,9 +9,9 @@ export function registerHealth(program: Command): void {
 		.command("health")
 		.description("Show health report for the active forest")
 		.option("--json", "Output as JSON")
-		.action(async (opts: { json?: boolean }) => {
+		.action(async (opts: { json?: boolean }, command: Command) => {
 			try {
-				const tenant = resolveActiveTenant();
+				const tenant = resolveActiveTenant(command.optsWithGlobals().forest as string | undefined);
 				const branches = listBranches(tenant);
 				const db = openDatabase(tenant);
 

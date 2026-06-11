@@ -15,9 +15,9 @@ export function registerChat(program: Command): void {
 		.command("chat")
 		.description("Start an interactive chat session with Euclid")
 		.option("--model <model>", "Model to use (e.g., claude-sonnet-4-6, openai/gpt-4o)")
-		.action(async (opts: { model?: string }) => {
+		.action(async (opts: { model?: string }, command: Command) => {
 			try {
-				const tenant = resolveActiveTenant();
+				const tenant = resolveActiveTenant(command.optsWithGlobals().forest as string | undefined);
 				const width = process.stdout.columns || 80;
 
 				printBanner(tenant.name);

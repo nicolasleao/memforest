@@ -7,9 +7,9 @@ export function registerReindex(program: Command): void {
 	program
 		.command("reindex")
 		.description("Reindex all branches in the active forest")
-		.action(async () => {
+		.action(async (_opts: unknown, command: Command) => {
 			try {
-				const tenant = resolveActiveTenant();
+				const tenant = resolveActiveTenant(command.optsWithGlobals().forest as string | undefined);
 				const branches = listBranches(tenant);
 				const db = openDatabase(tenant);
 
